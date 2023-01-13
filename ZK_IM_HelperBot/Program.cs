@@ -219,8 +219,9 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         }
 
     }
-    try {
-        if ($"@{message.From.Username.ToLower()}" == autor)
+    try
+    {
+        if ($"@{message.From.Username.ToLower() ?? ""}" == autor)
         {
             if (message.Text.StartsWith("/permit_true"))
             {
@@ -319,8 +320,9 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
                 return;
             }
         }
-    } catch { }
-        
+    }
+    catch { }
+
 
 
     if (message.Text.StartsWith("/start"))
