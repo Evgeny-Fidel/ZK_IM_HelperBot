@@ -209,7 +209,16 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
 async Task HandleMessage(ITelegramBotClient botClient, Update update, Message message)
 {
     message.Text = message.Text.ToLower();
+    if (Logs == true && message.Chat.Type == ChatType.Private)
+    {
+        string TextMes = message.Text;
+        Console.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | {message.From.Id} - @{message.From.Username} | {TextMes.Replace("\n", " ")}");
+        using (var File = new StreamWriter(LogFilePrivatMessage, true))
+        {
+            File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | {message.From.Id} - @{message.From.Username} | {TextMes.Replace("\n", " ")}");
+        }
 
+    }
     if ("@"+message.From.Username.ToLower() == autor)
     {
         if (message.Text.StartsWith("/permit_true"))
@@ -936,7 +945,7 @@ void PrintTime(object? state)
                     File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Вышла новая версия, пробуем скачать..");
                 }
                 Console.WriteLine("Вышла новая версия бота! Начинаем обновление..");
-                client.DownloadFile("https://gaffer-prog.evgeny-fidel.ru/download/386/", DirectoryProg + @"/Update ZKIMHelperBot.zip");
+                client.DownloadFile("https://gaffer-prog.evgeny-fidel.ru/download/459/", DirectoryProg + @"/Update ZKIMHelperBot.zip");
                 client.DownloadFile("https://gaffer-prog.evgeny-fidel.ru/download/110/", DirectoryProg + @"/UpdaterProg.exe");
                 if (Logs == true)
                 {
