@@ -219,105 +219,108 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         }
 
     }
-    if ($"@{message.From.Username.ToLower()}" == autor)
-    {
-        if (message.Text.StartsWith("/permit_true"))
+    try {
+        if ($"@{message.From.Username.ToLower()}" == autor)
         {
-            try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-            try
+            if (message.Text.StartsWith("/permit_true"))
             {
-                MySqlBase.Open();
-                string cmdsql = $"UPDATE BDGroup SET permit = '1' WHERE id = '{message.Chat.Id}';";
-                MySqlCommand command = new(cmdsql, MySqlBase);
-                command.ExecuteNonQuery();
-                var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-                await Task.Delay(1000);
-                await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-            }
-            catch
-            {
-                await botClient.SendTextMessageAsync(message.Chat, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
-            }
-            MySqlBase.Close();
-            return;
-        }
-        if (message.Text.StartsWith("/permit_false"))
-        {
-            try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-            try
-            {
-                MySqlBase.Open();
-                string cmdsql = $"UPDATE BDGroup SET permit = '0' WHERE id = '{message.Chat.Id}';";
-                MySqlCommand command = new(cmdsql, MySqlBase);
-                command.ExecuteNonQuery();
-                var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-                await Task.Delay(1000);
-                await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-            }
-            catch
-            {
-                await botClient.SendTextMessageAsync(message.Chat, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
-            }
-            MySqlBase.Close();
-            return;
-        }
-        if (message.Text.StartsWith("/bd_show"))
-        {
-            try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-            string Text = "";
-            try
-            {
-                MySqlBase.Open();
-                string cmdsql = $"SELECT * FROM BDUser;";
-                MySqlCommand command = new(cmdsql, MySqlBase);
-                MySqlDataReader reader = command.ExecuteReader();
-                Text = $"БД Пользователей:\n" +
-                    $"ID|Usename|FirstName|LastName\n";
-                while (reader.Read())
+                try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+                try
                 {
-                    string id = reader.GetString("id");
-                    string username = reader.GetString("username");
-                    string firstname = reader.GetString("firstname");
-                    string lastname = reader.GetString("lastname");
-
-                    if (id == "") { id = "-"; }
-                    if (username == "") { username = "-"; } else { username = $"@{username}"; }
-                    if (firstname == "") { firstname = "-"; }
-                    if (lastname == "") { lastname = "-"; }
-
-                    Text = $"{Text}{id}|{username}|{firstname}|{lastname}\n";
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET permit = '1' WHERE id = '{message.Chat.Id}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                    var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+                    await Task.Delay(1000);
+                    await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(message.Chat, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
                 }
                 MySqlBase.Close();
-                MySqlBase.Open();
-                cmdsql = $"SELECT * FROM BDGroup;";
-                command = new MySqlCommand(cmdsql, MySqlBase);
-                reader = command.ExecuteReader();
-                Text = $"{Text}\nБД Групп:\n" +
-                    $"ID|Title|Type|AutoWeatherLoc|Permit\n";
-                while (reader.Read())
-                {
-                    string id = reader.GetString("id");
-                    string title = reader.GetString("title");
-                    string type = reader.GetString("type");
-                    string AutoWeatherLoc = reader.GetString("auto_weather_loc");
-                    string permitbd = reader.GetString("permit");
-
-                    if (id == "") { id = "-"; }
-                    if (title == "") { title = "-"; }
-                    if (type == "") { type = "-"; }
-
-                    Text = $"{Text}{id}|{title}|{type}|{AutoWeatherLoc}|{permitbd}\n";
-                }
-                await botClient.SendTextMessageAsync(message.Chat, $"{Text}", disableNotification: true);
+                return;
             }
-            catch
+            if (message.Text.StartsWith("/permit_false"))
             {
-                await botClient.SendTextMessageAsync(message.Chat, $"Произошла ошибка..", disableNotification: true);
+                try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET permit = '0' WHERE id = '{message.Chat.Id}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                    var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+                    await Task.Delay(1000);
+                    await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(message.Chat, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
+                }
+                MySqlBase.Close();
+                return;
             }
-            MySqlBase.Close();
-            return;
+            if (message.Text.StartsWith("/bd_show"))
+            {
+                try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+                string Text = "";
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"SELECT * FROM BDUser;";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    MySqlDataReader reader = command.ExecuteReader();
+                    Text = $"БД Пользователей:\n" +
+                        $"ID|Usename|FirstName|LastName\n";
+                    while (reader.Read())
+                    {
+                        string id = reader.GetString("id");
+                        string username = reader.GetString("username");
+                        string firstname = reader.GetString("firstname");
+                        string lastname = reader.GetString("lastname");
+
+                        if (id == "") { id = "-"; }
+                        if (username == "") { username = "-"; } else { username = $"@{username}"; }
+                        if (firstname == "") { firstname = "-"; }
+                        if (lastname == "") { lastname = "-"; }
+
+                        Text = $"{Text}{id}|{username}|{firstname}|{lastname}\n";
+                    }
+                    MySqlBase.Close();
+                    MySqlBase.Open();
+                    cmdsql = $"SELECT * FROM BDGroup;";
+                    command = new MySqlCommand(cmdsql, MySqlBase);
+                    reader = command.ExecuteReader();
+                    Text = $"{Text}\nБД Групп:\n" +
+                        $"ID|Title|Type|AutoWeatherLoc|Permit\n";
+                    while (reader.Read())
+                    {
+                        string id = reader.GetString("id");
+                        string title = reader.GetString("title");
+                        string type = reader.GetString("type");
+                        string AutoWeatherLoc = reader.GetString("auto_weather_loc");
+                        string permitbd = reader.GetString("permit");
+
+                        if (id == "") { id = "-"; }
+                        if (title == "") { title = "-"; }
+                        if (type == "") { type = "-"; }
+
+                        Text = $"{Text}{id}|{title}|{type}|{AutoWeatherLoc}|{permitbd}\n";
+                    }
+                    await botClient.SendTextMessageAsync(message.Chat, $"{Text}", disableNotification: true);
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(message.Chat, $"Произошла ошибка..", disableNotification: true);
+                }
+                MySqlBase.Close();
+                return;
+            }
         }
-    }
+    } catch { }
+        
 
 
     if (message.Text.StartsWith("/start"))
