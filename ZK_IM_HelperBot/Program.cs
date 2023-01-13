@@ -14,7 +14,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
 
-string version = "0.0.1";
+string version = "0.0.2";
 var autor = "";
 string TokenTelegramAPI = "";
 string TokenWeather = "";
@@ -219,7 +219,7 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         }
 
     }
-    if ("@"+message.From.Username.ToLower() == autor)
+    if ($"@{message.From.Username.ToLower()}" == autor)
     {
         if (message.Text.StartsWith("/permit_true"))
         {
@@ -261,16 +261,73 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             MySqlBase.Close();
             return;
         }
+        if (message.Text.StartsWith("/bd_show"))
+        {
+            try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+            string Text = "";
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"SELECT * FROM BDUser;";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                Text = $"БД Пользователей:\n" +
+                    $"ID|Usename|FirstName|LastName\n";
+                while (reader.Read())
+                {
+                    string id = reader.GetString("id");
+                    string username = reader.GetString("username");
+                    string firstname = reader.GetString("firstname");
+                    string lastname = reader.GetString("lastname");
+
+                    if (id == "") { id = "-"; }
+                    if (username == "") { username = "-"; } else { username = $"@{username}"; }
+                    if (firstname == "") { firstname = "-"; }
+                    if (lastname == "") { lastname = "-"; }
+
+                    Text = $"{Text}{id}|{username}|{firstname}|{lastname}\n";
+                }
+                MySqlBase.Close();
+                MySqlBase.Open();
+                cmdsql = $"SELECT * FROM BDGroup;";
+                command = new MySqlCommand(cmdsql, MySqlBase);
+                reader = command.ExecuteReader();
+                Text = $"{Text}\nБД Групп:\n" +
+                    $"ID|Title|Type|AutoWeatherLoc|Permit\n";
+                while (reader.Read())
+                {
+                    string id = reader.GetString("id");
+                    string title = reader.GetString("title");
+                    string type = reader.GetString("type");
+                    string AutoWeatherLoc = reader.GetString("auto_weather_loc");
+                    string permitbd = reader.GetString("permit");
+
+                    if (id == "") { id = "-"; }
+                    if (title == "") { title = "-"; }
+                    if (type == "") { type = "-"; }
+
+                    Text = $"{Text}{id}|{title}|{type}|{AutoWeatherLoc}|{permitbd}\n";
+                }
+                await botClient.SendTextMessageAsync(message.Chat, $"{Text}", disableNotification: true);
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(message.Chat, $"Произошла ошибка..", disableNotification: true);
+            }
+            MySqlBase.Close();
+            return;
+        }
     }
+
 
     if (message.Text.StartsWith("/start"))
     {
         string Hello = $"Привет! Я бот \"{botClient.GetMeAsync().Result.FirstName}\"\n\n" +
         $"☀️ Я умею показывать погоду - \"Ботя погода\"\n" +
         $"☎️ Нужные номера телефонов нашего ЖК - \"Ботя телефоны\"\n" +
-        $"🥳 Великолепный магазин по организации праздника - \"Ботя праздник\"\n" +
+        $"🥳 Всё для праздника, воздушные шарики, игрушки - \"Ботя праздник\"\n" +
         //$"🥐 Вкусеая еда в ЖК - \"Ботя еда\"\n" +
-        $"💬 Лучшие чаты ЖК \"Ботя чаты\"\n" +
+        $"💬 Лучшие чаты ЖК - \"Ботя чаты\"\n" +
         $"🚌 Расписание автобуса - \"Ботя автобус\"\n" +
         $"❓ Забыл что я умею? - \"Ботя помощь\"\n\n" +
         $"⬇️ Так же все мои команды доступны по кнопке команд (рядом с кнопкой стикеров) или по команде /help";
@@ -303,7 +360,7 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             MySqlBase.Close();
         }
 
-            return;
+        return;
     }
     if (message.Text.StartsWith("/help") || message.Text.StartsWith("ботя помощь"))
     {
@@ -314,7 +371,7 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             $"/weather_im - погода в ЖК ИМ или отправь геолокацию, скажу какая погода в твоем районе;\n" +
             $"/phone - все номера телефонов;\n" +
             $"/bus - расписание автобуса;\n" +
-            $"/airlemons - организация праздника;\n" +
+            $"/airlemons - всё для праздника, воздушные шарики, игрушки;\n" +
             //$"/food - вкусная еда в ЖК;\n" +
             $"/chats - чаты ЖК;\n" +
             $"\nИли просто попроси: Ботя погода, Ботя телефоны, Ботя автобус, Ботя праздник, Ботя чаты, Ботя помощь\n" +
@@ -387,11 +444,11 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         await botClient.SendTextMessageAsync(message.Chat, TextMes, disableNotification: true);
         return;
     }
-    
+
     if (message.Text.StartsWith("/weather_im") || message.Text.StartsWith("ботя погод"))
     {
         ChekPermitGroup(message, ref Permit);
-        if(Permit==false) { return; }
+        if (Permit == false) { return; }
 
         var mes = await botClient.SendTextMessageAsync(message.Chat, "Секунду, сейчас сбегаю и посмотрю! 🏃‍♂️", disableNotification: true);
         try
@@ -484,7 +541,7 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         await botClient.SendTextMessageAsync(message.Chat.Id, PhoneNumber, disableNotification: true);
         return;
     }
-    if (message.Text.StartsWith("/airlemons") || message.Text.StartsWith("ботя праздник") || message.Text.StartsWith("ботя шар"))
+    if (message.Text.StartsWith("/airlemons") || message.Text.StartsWith("ботя праздник") || message.Text.StartsWith("ботя шар") || message.Text.StartsWith("ботя игр"))
     {
         ChekPermitGroup(message, ref Permit);
         if (Permit == false) { return; }
@@ -506,9 +563,9 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             },
 
         });
-        await botClient.SendTextMessageAsync(message.Chat.Id, 
+        await botClient.SendTextMessageAsync(message.Chat.Id,
             $"🎊 О видимо у Вас скоро праздник, поздравляю!\n" +
-            $"Лучшие товары для праздника и не только есть у этих ребят, все их контакты доступны по кнопкам.\n" +
+            $"Лучшие товары для праздника, игрушки, воздушные шарики и не только, есть у этих ребят!\nВсе их контакты доступны по кнопкам.\n" +
             $"А так же их магазин прямо у нас в ЖК! 😉",
             replyMarkup: inlineKeyboard, disableNotification: true);
 
@@ -560,14 +617,14 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             new[]
             {
                 InlineKeyboardButton.WithUrl(text: "🏰 Недвижимость", $"https://t.me/+ToOceSd3Nzdr9yOu"),
-                //InlineKeyboardButton.WithUrl(text: "🔁 Купи - продай", $"https://t.me/"),
+                InlineKeyboardButton.WithUrl(text: "🔁 Купи - продай", $"https://t.me/imml_trade"),
             },
         });
         await botClient.SendTextMessageAsync(message.Chat.Id,
             $"🚘 Попутчики - найди себе попутчика или сам им стань!\n" +
-            $"💨 Отдам даром - любители халявы или Вы просто очень щедрый, тогда Вам сюда.\n" +
-            $"🏰 Недвижимость - тут явно только богатые обитают.\n" +
-            $"🔁 Купи - продай - ссылки нету, скиньте пожалуйста\n" +
+            $"💨 Отдам даром - любители халявы или Вы просто очень щедрый, тогда Вам сюда\n" +
+            $"🏰 Недвижимость - тут явно только богатые обитают\n" +
+            $"🔁 Купи|продай - маленькое Авито\n" +
             $"\n",
             replyMarkup: inlineKeyboard, disableNotification: true);
 
@@ -759,6 +816,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
         case "Airlemons_Shop":
             {
                 await botClient.SendLocationAsync(callbackQuery.Message.Chat.Id, latitude: 55.959036f, longitude: 37.679662f, disableNotification: true, replyToMessageId: callbackQuery.Message.MessageId);
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, "Тенистый бульвар, дом 11", disableNotification: true);
                 break;
             }
     }
