@@ -133,6 +133,18 @@ else
 if (Logs == true)
 {
     Directory.CreateDirectory(DirectoryLogs);
+    long MaxSize = 1 * 1024 * 1024 * 1024;
+    MaxSize *= 2;
+    try
+    {
+        long SizeLogFileUpdate = new FileInfo(LogFileUpdate).Length;
+        long SizeLogFileErrorTGAPI = new FileInfo(LogFileErrorTGAPI).Length;
+        long SizeLogFilePrivatMessage = new FileInfo(LogFilePrivatMessage).Length;
+        if (SizeLogFileUpdate > MaxSize) { System.IO.File.Delete(LogFileUpdate); }
+        if (SizeLogFileErrorTGAPI > MaxSize) { System.IO.File.Delete(LogFileErrorTGAPI); }
+        if (SizeLogFilePrivatMessage > MaxSize) { System.IO.File.Delete(LogFilePrivatMessage); }
+    }
+    catch { }
     System.IO.File.AppendAllText(LogFileUpdate, $"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начало логирования..\n");
     System.IO.File.AppendAllText(LogFileErrorTGAPI, $"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начало логирования..\n");
     System.IO.File.AppendAllText(LogFilePrivatMessage, $"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начало логирования..\n");
