@@ -14,7 +14,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
 
-string version = "0.0.3";
+string version = "1.0.5";
 var autor = "";
 string TokenTelegramAPI = "";
 string TokenWeather = "";
@@ -130,31 +130,6 @@ else
         "");
 }
 
-if (Logs == true)
-{
-    Directory.CreateDirectory(DirectoryLogs);
-    long MaxSize = 1 * 1024 * 1024 * 1024;
-    MaxSize *= 2;
-    try
-    {
-        long SizeLogFileUpdate = new FileInfo(LogFileUpdate).Length;
-        long SizeLogFileErrorTGAPI = new FileInfo(LogFileErrorTGAPI).Length;
-        long SizeLogFilePrivatMessage = new FileInfo(LogFilePrivatMessage).Length;
-        if (SizeLogFileUpdate > MaxSize) { System.IO.File.Delete(LogFileUpdate); }
-        if (SizeLogFileErrorTGAPI > MaxSize) { System.IO.File.Delete(LogFileErrorTGAPI); }
-        if (SizeLogFilePrivatMessage > MaxSize) { System.IO.File.Delete(LogFilePrivatMessage); }
-    }
-    catch { }
-    System.IO.File.AppendAllText(LogFileUpdate, $"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начало логирования..\n");
-    System.IO.File.AppendAllText(LogFileErrorTGAPI, $"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начало логирования..\n");
-    System.IO.File.AppendAllText(LogFilePrivatMessage, $"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начало логирования..\n");
-}
-if (AutoUpdate == true)
-{
-    //Timer timer = new(TimerCallback, null, 0, AutoUpdateMinete * 60 * 1000);
-    TimerCallback callback = new(PrintTime);
-    Timer timer = new(callback, null, 0, AutoUpdateMinete * 60 * 1000);
-}
 
 Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("en-US");
 
@@ -179,11 +154,43 @@ var receiverOptions = new ReceiverOptions
 };
 botClient.StartReceiving(HandleUpdateAsync, HandlePollingErrorAsync, receiverOptions, cts.Token);
 var me = await botClient.GetMeAsync();
-Console.WriteLine($"Вышел на смену: \"{botClient.GetMeAsync().Result.FirstName}\" @{botClient.GetMeAsync().Result.Username} | Версия бота: {version} | {DateTime.Now:dd.MM.yy | HH:mm:ss}");
+Console.WriteLine($"Вышел на смену: \"{botClient.GetMeAsync().Result.FirstName}\" @{botClient.GetMeAsync().Result.Username}\nВерсия бота: {version} | {DateTime.Now:dd.MM.yy | HH:mm:ss}");
 
 if (System.IO.File.Exists($"{DirectoryProg}/Update ZKIMHelperBot.zip")) { System.IO.File.Delete($"{DirectoryProg}/Update ZKIMHelperBot.zip"); }
 if (System.IO.File.Exists($"{DirectoryProg}/UpdaterProg.exe")) { System.IO.File.Delete($"{DirectoryProg}/UpdaterProg.exe"); }
 
+if (Logs == true)
+{
+    Directory.CreateDirectory(DirectoryLogs);
+    long MaxSize = 1 * 1024 * 1024 * 1024;
+    MaxSize *= 2;
+    try
+    {
+        long SizeLogFileUpdate = new FileInfo(LogFileUpdate).Length;
+        long SizeLogFileErrorTGAPI = new FileInfo(LogFileErrorTGAPI).Length;
+        long SizeLogFilePrivatMessage = new FileInfo(LogFilePrivatMessage).Length;
+        if (SizeLogFileUpdate > MaxSize) { System.IO.File.Delete(LogFileUpdate); }
+        if (SizeLogFileErrorTGAPI > MaxSize) { System.IO.File.Delete(LogFileErrorTGAPI); }
+        if (SizeLogFilePrivatMessage > MaxSize) { System.IO.File.Delete(LogFilePrivatMessage); }
+    }
+    catch { }
+    System.IO.File.AppendAllText(LogFileUpdate, $"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начало логирования..\n");
+    System.IO.File.AppendAllText(LogFileErrorTGAPI, $"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начало логирования..\n");
+    System.IO.File.AppendAllText(LogFilePrivatMessage, $"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начало логирования..\n");
+
+    Console.WriteLine($"\n" +
+        $"——————————Settings——————————\n" +
+        $"Autor = {autor}\n" +
+        $"Auto_Update = {AutoUpdate}\n" +
+        $"Auto_Update_Minute = {AutoUpdateMinete}\n" +
+        $"Weather_Location = {WeatherLoc}\n");
+}
+if (AutoUpdate == true)
+{
+    //Timer timer = new(TimerCallback, null, 0, AutoUpdateMinete * 60 * 1000);
+    TimerCallback callback = new(UpdateBot);
+    Timer timer = new(callback, null, 0, AutoUpdateMinete * 60 * 1000);
+}
 Console.ReadLine();
 cts.Cancel();
 
@@ -206,13 +213,19 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
     }
     if (update.Message != null)
     {
-        if (update.Message.Type == MessageType.ChatTitleChanged)
-        {
-            await HandleMember(botClient, update, update.Message);
-        }
         if (update.Message.Type == MessageType.Location)
         {
             await HandleLocation(botClient, update.Message);
+        }
+        if (update.Message.Type == MessageType.ChatMemberLeft ||
+            update.Message.Type == MessageType.ChatMembersAdded ||
+            update.Message.Type == MessageType.ChatPhotoChanged ||
+            update.Message.Type == MessageType.ChatPhotoDeleted ||
+            update.Message.Type == MessageType.ChatTitleChanged ||
+            update.Message.Type == MessageType.MessageAutoDeleteTimerChanged ||
+            update.Message.Type == MessageType.MessagePinned)
+        {
+            await HandleSystemMessage(botClient, update, update.Message);
         }
     }
     return;
@@ -220,6 +233,122 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
 
 async Task HandleMessage(ITelegramBotClient botClient, Update update, Message message)
 {
+    if (message.Text.ToLower().StartsWith("/hello_text "))
+    {
+        ChekPermitGroup(message, ref Permit);
+        if (Permit == false) { return; }
+        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
+        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
+            return;
+        }
+        string SaveText = message.Text.Replace("/hello_text ", "");
+        if (SaveText == " " || SaveText == "")
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nНе указан текст для сохранения!", disableNotification: true);
+            return;
+        }
+        if (SaveText.Length > 4000)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nСлишком длинное сообщение, максимум 4000 символов, а у Вас {SaveText.Length}", disableNotification: true);
+            return;
+        }
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"UPDATE BDGroup SET hello_text = '{SaveText}' WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            command.ExecuteNonQuery();
+            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+            await Task.Delay(1000);
+            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+        }
+        catch
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+        }
+        MySqlBase.Close();
+        return;
+    }
+    if (message.Text.ToLower().StartsWith("/mute_text "))
+    {
+        ChekPermitGroup(message, ref Permit);
+        if (Permit == false) { return; }
+        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
+        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
+            return;
+        }
+        string SaveText = message.Text.Replace("/mute_text ", "");
+        if (SaveText == " " || SaveText == "")
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nНе указан текст для сохранения!", disableNotification: true);
+            return;
+        }
+        if (SaveText.Length > 4000)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nСлишком длинное сообщение, максимум 4000 символов, а у Вас {SaveText.Length}", disableNotification: true);
+            return;
+        }
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"UPDATE BDGroup SET mute_text = '{SaveText}' WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            command.ExecuteNonQuery();
+            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+            await Task.Delay(1000);
+            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+        }
+        catch
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+        }
+        MySqlBase.Close();
+        return;
+    }
+    if (message.Text.ToLower().StartsWith("/rmute_text "))
+    {
+        ChekPermitGroup(message, ref Permit);
+        if (Permit == false) { return; }
+        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
+        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
+            return;
+        }
+        string SaveText = message.Text.Replace("/rmute_text ", "");
+        if (SaveText == " " || SaveText == "")
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nНе указан текст для сохранения!", disableNotification: true);
+            return;
+        }
+        if (SaveText.Length > 4000)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nСлишком длинное сообщение, максимум 4000 символов, а у Вас {SaveText.Length}", disableNotification: true);
+            return;
+        }
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"UPDATE BDGroup SET rmute_text = '{SaveText}' WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            command.ExecuteNonQuery();
+            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+            await Task.Delay(1000);
+            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+        }
+        catch
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+        }
+        MySqlBase.Close();
+        return;
+    }
+    
+
     message.Text = message.Text.ToLower();
     if (Logs == true && message.Chat.Type == ChatType.Private)
     {
@@ -277,6 +406,9 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             }
             if (message.Text.StartsWith("/bd"))
             {
+                string hello_text = "-";
+                string mute_text = "-";
+                string rmute_text = "-";
                 try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
                 string Text = "";
                 try
@@ -307,28 +439,95 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
                     command = new MySqlCommand(cmdsql, MySqlBase);
                     reader = command.ExecuteReader();
                     Text = $"{Text}\nБД Групп:\n" +
-                        $"ID|Title|Type|AutoWeatherLoc|Permit\n";
+                        $"ID|Title|Type|AutoWeatherLoc|Permit|DSM|Hello|HelloText|MuteText|RmuteText\n";
                     while (reader.Read())
                     {
+                        hello_text = "-";
+                        mute_text = "-";
+                        rmute_text = "-";
                         string id = reader.GetString("id");
                         string title = reader.GetString("title");
                         string type = reader.GetString("type");
                         string AutoWeatherLoc = reader.GetString("auto_weather_loc");
                         string permitbd = reader.GetString("permit");
+                        string DSM = reader.GetString("dsm");
+                        string HelloBD = reader.GetString("hello");
+                        try { hello_text = reader.GetString("hello_text").Replace("\n", " "); } catch { }
+                        try { mute_text = reader.GetString("mute_text").Replace("\n", " "); } catch { }
+                        try { rmute_text = reader.GetString("rmute_text").Replace("\n", " "); } catch { }
 
                         if (id == "") { id = "-"; }
                         if (title == "") { title = "-"; }
                         if (type == "") { type = "-"; }
 
-                        Text = $"{Text}{id}|{title}|{type}|{AutoWeatherLoc}|{permitbd}\n";
+                        Text = $"{Text}{id}|{title}|{type}|{AutoWeatherLoc}|{permitbd}|{DSM}|{HelloBD}|{hello_text}|{mute_text}|{rmute_text}\n";
                     }
-                    await botClient.SendTextMessageAsync(message.Chat, $"{Text}", disableNotification: true);
+                    var chunks = Text.Chunk(4096).Select(chunk => string.Join("", chunk)).ToList();
+
+                    foreach (var chunk in chunks)
+                        await botClient.SendTextMessageAsync(message.Chat, $"{chunk}", disableNotification: true);
                 }
                 catch
                 {
                     await botClient.SendTextMessageAsync(message.Chat, $"Произошла ошибка..", disableNotification: true);
                 }
                 MySqlBase.Close();
+                return;
+            }
+            if (message.Text.StartsWith("/up"))
+            {
+                try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+                if (Logs == true)
+                {
+                    using var File = new StreamWriter(LogFileUpdate, true);
+                    File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начинаем проверку наличия новых версий..");
+                }
+                var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"🌐 Начинаем проверку наличия новых версий..", disableNotification: true);
+                try
+                {
+                    using (var client = new WebClient())
+                    {
+                        string latestVersion = client.DownloadString("https://gaffer-prog.evgeny-fidel.ru/zk_im_helperbot/");
+                        if (!latestVersion.Contains(version))
+                        {
+                            if (Logs == true)
+                            {
+                                using var File = new StreamWriter(LogFileUpdate, true);
+                                File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Вышла новая версия, пробуем скачать..");
+                            }
+                            await botClient.EditMessageTextAsync(message.Chat, mes.MessageId, $"✅ Действительно, вышла новая версия, пробую скачать..");
+                            Console.WriteLine("Вышла новая версия бота! Начинаем обновление..");
+                            client.DownloadFile("https://gaffer-prog.evgeny-fidel.ru/download/459/", DirectoryProg + @"/Update ZKIMHelperBot.zip");
+                            client.DownloadFile("https://gaffer-prog.evgeny-fidel.ru/download/110/", DirectoryProg + @"/UpdaterProg.exe");
+                            if (Logs == true)
+                            {
+                                using var File = new StreamWriter(LogFileUpdate, true);
+                                File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Файлы обновления успешно скачались, пробуем обновиться..");
+                            }
+                            await botClient.EditMessageTextAsync(message.Chat, mes.MessageId, $"✅ Все скачалось, сейчас обновлюсь!)");
+                            Process.Start(DirectoryProg + @"/UpdaterProg.exe");
+                            Environment.Exit(0);
+                        }
+                        else
+                        {
+                            if (Logs == true)
+                            {
+                                using var File = new StreamWriter(LogFileUpdate, true);
+                                File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Новых версий нет, работаем в прежнем режиме..");
+                            }
+                            await botClient.EditMessageTextAsync(message.Chat, mes.MessageId, $"✅ Новых версий нет");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (Logs == true)
+                    {
+                        using var File = new StreamWriter(LogFileUpdate, true);
+                        File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Произошла ошибка: {ex.Message}");
+                    }
+                    await botClient.EditMessageTextAsync(message.Chat, mes.MessageId, $"❌ Произошла ошибка..");
+                }
                 return;
             }
         }
@@ -466,24 +665,68 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             $"From Member: {chatMember.Status}";
         try
         {
+            /*try // Пользователь
+            {
+                MySqlBase.Open();
+
+                var IDUser = message.From.Id;
+                if (message.ReplyToMessage != null)
+                {
+                    IDUser = message.ReplyToMessage.From.Id;
+                }
+                string cmdsql = $"SELECT * FROM BDUser WHERE id = '{IDUser}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                string saveurl = "";
+                string saveurlval = "";
+                string TestMes = "";
+                while (reader.Read())
+                {
+                    saveurl = reader.GetString("saveurl");
+                    saveurlval = reader.GetString("saveurlval");
+                    TestMes = reader.GetString("TestMes");
+                }
+                MySqlBase.Close();
+                TextMes = $"{TextMes}\n\n" +
+                    $"Информация из БД по пользователю:\n" +
+                    $"SaveUrl: {saveurl}\n" +
+                    $"SaveURLVal: {saveurlval}\n" +
+                    $"TestMes: {TestMes}";
+            }
+            catch { MySqlBase.Close(); }*/
             try // Группа
             {
                 MySqlBase.Open();
                 string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{message.Chat.Id}';";
                 MySqlCommand command = new(cmdsql, MySqlBase);
                 MySqlDataReader reader = command.ExecuteReader();
+                string Permit = "";
                 string AutoWeatherLoc = "";
-                string PermitBD = "";
+                string DSM = "";
+                string HelloBD = "";
+                string hello_text = "null";
+                string mute_text = "null";
+                string rmute_text = "null";
                 while (reader.Read())
                 {
+                    Permit = reader.GetString("permit");
                     AutoWeatherLoc = reader.GetString("auto_weather_loc");
-                    PermitBD = reader.GetString("permit");
+                    DSM = reader.GetString("dsm");
+                    HelloBD = reader.GetString("hello");
+                    try { hello_text = reader.GetString("hello_text"); } catch { }
+                    try { mute_text = reader.GetString("mute_text"); } catch { }
+                    try { rmute_text = reader.GetString("rmute_text"); } catch { }
                 }
                 MySqlBase.Close();
                 TextMes = $"{TextMes}\n\n" +
                     $"Информация из БД по группе:\n" +
+                    $"Permit: {Permit}\n" +
                     $"AutoWeatherLoc: {AutoWeatherLoc}\n" +
-                    $"Permit: {PermitBD}";
+                    $"DSM: {DSM}\n" +
+                    $"Hello: {HelloBD}\n" +
+                    $"HelloText: {hello_text}\n" +
+                    $"MuteText: {mute_text}\n" +
+                    $"RmuteText: {rmute_text}";
             }
             catch { MySqlBase.Close(); }
         }
@@ -491,7 +734,10 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         TextMes = $"{TextMes}\n\n" +
             $"Разработчик: @evgeny_fidel\n" +
             $"Версия бота: {version}\n";
-        await botClient.SendTextMessageAsync(message.Chat, TextMes, disableNotification: true);
+        var chunks = TextMes.Chunk(4096).Select(chunk => string.Join("", chunk)).ToList();
+
+        foreach (var chunk in chunks)
+            await botClient.SendTextMessageAsync(message.Chat, $"{chunk}", disableNotification: true);
         return;
     }
 
@@ -660,6 +906,91 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         return;
     }
 
+
+    if (message.Text.StartsWith("/hello_text_clearn"))
+    {
+        ChekPermitGroup(message, ref Permit);
+        if (Permit == false) { return; }
+        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
+        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
+            return;
+        }
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"UPDATE BDGroup SET hello_text = NULL WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            command.ExecuteNonQuery();
+            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+            await Task.Delay(1000);
+            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+        }
+        catch
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+        }
+        MySqlBase.Close();
+        return;
+    }
+    if (message.Text.StartsWith("/mute_text_clearn"))
+    {
+        ChekPermitGroup(message, ref Permit);
+        if (Permit == false) { return; }
+        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
+        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
+            return;
+        }
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"UPDATE BDGroup SET mute_text = NULL WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            command.ExecuteNonQuery();
+            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+            await Task.Delay(1000);
+            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+        }
+        catch
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+        }
+        MySqlBase.Close();
+        return;
+    }
+    if (message.Text.StartsWith("/rmute_text_clearn"))
+    {
+        ChekPermitGroup(message, ref Permit);
+        if (Permit == false) { return; }
+        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
+        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
+            return;
+        }
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"UPDATE BDGroup SET rmute_text = NULL WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            command.ExecuteNonQuery();
+            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+            await Task.Delay(1000);
+            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+        }
+        catch
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+        }
+        MySqlBase.Close();
+        return;
+    }
     if (message.Text.StartsWith("/mute"))
     {
         try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
@@ -672,27 +1003,40 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         }
         ChatMember chatMember = await botClient.GetChatMemberAsync(message.Chat.Id, message.ReplyToMessage.From.Id);
         ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (message.ReplyToMessage.From.Username.ToLower() == "evgeny_fidel_bot") // Проверка не бот ли это
+
+        string NameUserBlock = "";
+        string NameUserGood = "";
+
+        if (message.ReplyToMessage.From.Username == null)
         {
-            await botClient.SendTextMessageAsync(message.Chat, $"{"@" + message.From.Username ?? $"{message.From.FirstName} {message.From.LastName}"}" +
-                $" Вы меня пытаетесь заблокировать? Ха-ха, очень смешно...", disableNotification: true);
-            return;
+            NameUserBlock = $"{message.ReplyToMessage.From.FirstName} {message.ReplyToMessage.From.LastName ?? " "}";
+            NameUserBlock = NameUserBlock.Replace("  ", "");
+            NameUserBlock = $"<a href=\"tg://user?id={message.ReplyToMessage.From.Id}\">{NameUserBlock}</a>";
         }
-        if (chatMember.Status == ChatMemberStatus.Creator) // Проверка на создателя
+        else
         {
-            await botClient.SendTextMessageAsync(message.Chat, $"{"@" + message.ReplyToMessage.From.Username ?? $"{message.ReplyToMessage.From.FirstName} {message.ReplyToMessage.From.LastName}"} он создатель группы!{"@" + message.From.Username ?? $"{message.From.FirstName} {message.From.LastName}"} Ты действительно думаешь, что у меня хватит смелости его замутить? Ну уж нет.. Я умываю руки..", disableNotification: true);
-            return;
+            NameUserBlock = $"@{message.ReplyToMessage.From.Username}";
         }
-        if (chatMember.Status == ChatMemberStatus.Administrator) // Проверка на админа
+        if (message.From.Username == null)
         {
-            await botClient.SendTextMessageAsync(message.Chat, $"{"@" + message.ReplyToMessage.From.Username ?? $"{message.ReplyToMessage.From.FirstName} {message.ReplyToMessage.From.LastName}"} явлеется администратором данной группы, замутить его невозможно (а жаль..)", disableNotification: true);
+            NameUserGood = $"{message.From.FirstName} {message.From.LastName ?? " "}";
+            NameUserGood = NameUserGood.Replace("  ", "");
+            NameUserGood = $"<a href=\"tg://user?id={message.From.Id}\">{NameUserGood}</a>";
+        }
+        else
+        {
+            NameUserGood = $"@{message.From.Username}";
+        }
+
+        if (chatMember.Status == ChatMemberStatus.Administrator || chatMember.Status == ChatMemberStatus.Creator) // Проверка на админа
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"{NameUserBlock} явлеется администратором данной группы, замутить его невозможно..", disableNotification: true, parseMode: ParseMode.Html);
             return;
         }
 
         var SplitMes = message.Text.Split(' ').Last();
         SplitMes = Regex.Replace(SplitMes, @"\D+", "");
 
-        var MesWar = "";
         int MaxMinuteMember = 1;
         int MuteMinute;
         if (chatMemberYou.Status == ChatMemberStatus.Administrator || chatMemberYou.Status == ChatMemberStatus.Creator)
@@ -719,7 +1063,6 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
                 {
                     MuteMinute = MaxMinuteMember;
                     int Opachki = Convert.ToInt32(SplitMes);
-                    MesWar = $"Только администрация чата может заблокировать больше чем на {MaxMinuteMember} минуту, а Вы хотели на {Opachki} минут.";
                 }
             }
         }
@@ -729,11 +1072,32 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             CanSendMediaMessages = false,
             CanSendOtherMessages = false
         }, DateTime.UtcNow.AddMinutes(MuteMinute));
-        await botClient.SendTextMessageAsync(message.Chat, $"У {"@" + message.ReplyToMessage.From.Username ?? $"{message.ReplyToMessage.From.FirstName} {message.ReplyToMessage.From.LastName}"} " +
-            $"заблокированы пальцы в чате на {MuteMinute} минут\n" +
-            $"Скажем спасибо {"@" + message.From.Username ?? $"{message.From.FirstName} {message.From.LastName}"}\n" +
-            $"{MesWar}",
-            disableNotification: true, replyToMessageId: message.ReplyToMessage.MessageId);
+
+        string Text = "";
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            MySqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                try { Text = reader.GetString("mute_text"); } catch { }
+            }
+        }
+        catch { }
+        MySqlBase.Close();
+
+        if (Text == "" || Text == " ")
+        {
+            Text = $"❗️У {NameUserBlock} заблокированы пальцы в чате на {MuteMinute} {GetCorrectWordForm(MuteMinute, "минуту", "минуты", "минут")}\nСкажем спасибо {NameUserGood} 😉";
+        }
+        else
+        {
+            Text = Text.Replace("%username_block%", $"{NameUserBlock}").Replace("%username_good%", $"{NameUserGood}").Replace("%time%", $"{MuteMinute} {GetCorrectWordForm(MuteMinute, "минуту", "минуты", "минут")}");
+        }
+
+        await botClient.SendTextMessageAsync(message.Chat, Text, disableNotification: true, replyToMessageId: message.ReplyToMessage.MessageId, parseMode: ParseMode.Html);
         return;
     }
     if (message.Text.StartsWith("/rmute"))
@@ -748,25 +1112,32 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             return;
         }
         ChatMember chatMember = await botClient.GetChatMemberAsync(message.Chat.Id, message.ReplyToMessage.From.Id);
-        if (message.ReplyToMessage.From.Username.ToLower() == "evgeny_fidel_bot") // Проверка не бот ли это
+        string NameUserBlock = "";
+        string NameUserGood = "";
+        if (message.ReplyToMessage.From.Username == null)
         {
-            await botClient.SendTextMessageAsync(message.Chat, $"{"@" + message.From.Username ?? $"{message.From.FirstName} {message.From.LastName}"}" +
-                $" Вы меня пытаетесь разблокировать? Ха-ха, очень смешно...", disableNotification: true);
-            return;
+            NameUserBlock = $"{message.ReplyToMessage.From.FirstName} {message.ReplyToMessage.From.LastName ?? " "}";
+            NameUserBlock = NameUserBlock.Replace("  ", "");
+            NameUserBlock = $"<a href=\"tg://user?id={message.ReplyToMessage.From.Id}\">{NameUserBlock}</a>";
         }
-        if (chatMember.Status == ChatMemberStatus.Creator) // Проверка на создателя
+        else
         {
-            await botClient.SendTextMessageAsync(message.Chat, $"{"@" + message.ReplyToMessage.From.Username ?? $"{message.ReplyToMessage.From.FirstName} {message.ReplyToMessage.From.LastName}"} он создатель группы! Ало..", disableNotification: true);
-            return;
+            NameUserBlock = $"@{message.ReplyToMessage.From.Username}";
         }
-        if (chatMember.Status == ChatMemberStatus.Administrator) // Проверка на админа
+        if (message.From.Username == null)
         {
-            await botClient.SendTextMessageAsync(message.Chat, $"{"@" + message.ReplyToMessage.From.Username ?? $"{message.ReplyToMessage.From.FirstName} {message.ReplyToMessage.From.LastName}"} явлеется администратором данной группы", disableNotification: true);
-            return;
+            NameUserGood = $"{message.From.FirstName} {message.From.LastName ?? " "}";
+            NameUserGood = NameUserGood.Replace("  ", "");
+            NameUserGood = $"<a href=\"tg://user?id={message.From.Id}\">{NameUserGood}</a>";
         }
+        else
+        {
+            NameUserGood = $"@{message.From.Username}";
+        }
+
         if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
         {
-            await botClient.SendTextMessageAsync(message.Chat, $"{"@" + message.From.Username ?? $"{message.From.FirstName} {message.From.LastName}"} я рад за Вашу доблесть и отвагу, но {"@" + message.ReplyToMessage.From.Username ?? $"{message.ReplyToMessage.From.FirstName} {message.ReplyToMessage.From.LastName}"} может разблокировать только администрация чата!", disableNotification: true, replyToMessageId: message.ReplyToMessage.MessageId);
+            await botClient.SendTextMessageAsync(message.Chat, $"{NameUserGood} я рад за Вашу доблесть и отвагу, но {NameUserBlock} может разблокировать только администрация чата!", disableNotification: true, replyToMessageId: message.ReplyToMessage.MessageId, parseMode: ParseMode.Html);
             return;
         }
         await botClient.RestrictChatMemberAsync(message.Chat.Id, message.ReplyToMessage.From.Id, permissions: new ChatPermissions
@@ -775,11 +1146,35 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             CanSendMediaMessages = true,
             CanSendOtherMessages = true
         });
-        await botClient.SendTextMessageAsync(message.Chat, $"У {"@" + message.ReplyToMessage.From.Username ?? $"{message.ReplyToMessage.From.FirstName} {message.ReplyToMessage.From.LastName}"} разблокированы пальцы в чате", disableNotification: true, replyToMessageId: message.ReplyToMessage.MessageId);
+
+        string Text = "";
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            MySqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                try { Text = reader.GetString("rmute_text"); } catch { }
+            }
+        }
+        catch { }
+        MySqlBase.Close();
+
+        if (Text == "" || Text == " ")
+        {
+            Text = $"У {NameUserBlock} разблокированы пальцы в чате!";
+        }
+        else
+        {
+            Text = Text.Replace("%username_block%", $"{NameUserBlock}").Replace("%username_good%", $"{NameUserGood}");
+        }
+
+
+        await botClient.SendTextMessageAsync(message.Chat, Text, disableNotification: true, replyToMessageId: message.ReplyToMessage.MessageId, parseMode: ParseMode.Html);
         return;
     }
-
-
     if (message.Text.StartsWith("/auto_weather_loc_off"))
     {
         try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
@@ -832,6 +1227,118 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         catch
         {
             await botClient.SendTextMessageAsync(message.Chat, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
+        }
+        MySqlBase.Close();
+        return;
+    }
+    if (message.Text.StartsWith("/dsm_off"))
+    {
+        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+        ChekPermitGroup(message, ref Permit);
+        if (Permit == false) { return; }
+        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
+        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
+            return;
+        }
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"UPDATE BDGroup SET dsm = '0' WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            command.ExecuteNonQuery();
+            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+            await Task.Delay(1000);
+            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+        }
+        catch
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+        }
+        MySqlBase.Close();
+        return;
+    }
+    if (message.Text.StartsWith("/dsm_on"))
+    {
+        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+        ChekPermitGroup(message, ref Permit);
+        if (Permit == false) { return; }
+        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
+        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
+            return;
+        }
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"UPDATE BDGroup SET dsm = '1' WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            command.ExecuteNonQuery();
+            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+            await Task.Delay(1000);
+            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+        }
+        catch
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+        }
+        MySqlBase.Close();
+        return;
+    }
+    if (message.Text.StartsWith("/hello_off"))
+    {
+        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+        ChekPermitGroup(message, ref Permit);
+        if (Permit == false) { return; }
+        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
+        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
+            return;
+        }
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"UPDATE BDGroup SET hello = '0' WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            command.ExecuteNonQuery();
+            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+            await Task.Delay(1000);
+            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+        }
+        catch
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+        }
+        MySqlBase.Close();
+        return;
+    }
+    if (message.Text.StartsWith("/hello_on"))
+    {
+        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+        ChekPermitGroup(message, ref Permit);
+        if (Permit == false) { return; }
+        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
+        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
+            return;
+        }
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"UPDATE BDGroup SET hello = '1' WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            command.ExecuteNonQuery();
+            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
+            await Task.Delay(1000);
+            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
+        }
+        catch
+        {
+            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
         }
         MySqlBase.Close();
         return;
@@ -991,6 +1498,76 @@ async Task HandleLocation(ITelegramBotClient botClient, Message message)
     return;
 }
 
+async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Message message)
+{
+    bool DSM = false;
+    bool Hello = false;
+    string HelloText = "";
+    if (message.Chat.Type == ChatType.Group || message.Chat.Type == ChatType.Supergroup)
+    {
+        try
+        {
+            MySqlBase.Open();
+            string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{message.Chat.Id}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            MySqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var DSMBD = reader.GetString("dsm");
+                var MesHello = reader.GetString("hello");
+                try { HelloText = reader.GetString("hello_text"); } catch { }
+                if (DSMBD == "True")
+                {
+                    DSM = true;
+                }
+                if (MesHello == "True")
+                {
+                    Hello = true;
+                }
+            }
+        }
+        catch { }
+        MySqlBase.Close();
+    }
+    if (update.Message.Type == MessageType.ChatTitleChanged)
+    {
+        await HandleMember(botClient, update, update.Message);
+    }
+    if (DSM == true)
+    {
+        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+    }
+    if (update.Message.Type == MessageType.ChatMembersAdded && Hello == true)
+    {
+        try
+        {
+            string NameUser = "";
+            if (message.NewChatMembers[0].Username == null)
+            {
+                NameUser = $"{message.NewChatMembers[0].FirstName} {message.NewChatMembers[0].LastName ?? " "}";
+                NameUser = NameUser.Replace("  ", "");
+                NameUser = $"<a href=\"tg://user?id={message.NewChatMembers[0].Id}\">{NameUser}</a>";
+            }
+            else
+            {
+                NameUser = $"@{message.NewChatMembers[0].Username}";
+            }
+            if (HelloText == "" || HelloText == " ")
+            {
+                HelloText = $"{NameUser} добро пожаловать!✌️\nЯ бот {botClient.GetMeAsync().Result.FirstName}, стараюсь помогать всем в этом чатике. Мои возможности - /help";
+            }
+            else
+            {
+                HelloText = HelloText.Replace("%username%", $"{NameUser}").Replace("%botname%", $"{botClient.GetMeAsync().Result.FirstName}");
+            }
+            await botClient.SendTextMessageAsync(message.Chat.Id, $"{HelloText}", disableNotification: true, parseMode: ParseMode.Html);
+        }
+        catch { }
+    }
+    MySqlBase.Close();
+    return;
+}
+
 Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
 {
     var ErrorMessage = exception switch
@@ -1012,7 +1589,7 @@ Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, 
 
 }
 
-void PrintTime(object? state)
+void UpdateBot(object? state)
 {
     if (Logs == true)
     {
@@ -1158,4 +1735,23 @@ void ChekPermitGroup(Message message, ref bool Permit)
         Permit = true;
     }
     MySqlBase.Close();
+}
+
+static string GetCorrectWordForm(int number, string form1, string form2, string form3)
+{
+    if (number % 100 >= 11 && number % 100 <= 14)
+    {
+        return form3;
+    }
+    switch (number % 10)
+    {
+        case 1:
+            return form1;
+        case 2:
+        case 3:
+        case 4:
+            return form2;
+        default:
+            return form3;
+    }
 }
