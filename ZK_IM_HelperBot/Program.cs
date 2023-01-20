@@ -14,7 +14,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
 
-string version = "1.0.5";
+string version = "1.0.6";
 var autor = "";
 string TokenTelegramAPI = "";
 string TokenWeather = "";
@@ -196,38 +196,42 @@ cts.Cancel();
 
 async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
 {
-    if (update.Type == UpdateType.Message && update?.Message?.Text != null)
+    try
     {
-        await HandleMessage(botClient, update, update.Message);
-    }
-    if (update.Type == UpdateType.CallbackQuery)
-    {
-        await HandleCallbackQuery(botClient, update.CallbackQuery);
-    }
-    if (update.MyChatMember != null)
-    {
-        if (update.MyChatMember.NewChatMember.Status == ChatMemberStatus.Administrator)
+        if (update.Type == UpdateType.Message && update?.Message?.Text != null)
         {
-            await HandleMember(botClient, update, update.Message);
+            await HandleMessage(botClient, update, update.Message);
+        }
+        if (update.Type == UpdateType.CallbackQuery)
+        {
+            await HandleCallbackQuery(botClient, update.CallbackQuery);
+        }
+        if (update.MyChatMember != null)
+        {
+            if (update.MyChatMember.NewChatMember.Status == ChatMemberStatus.Administrator)
+            {
+                await HandleMember(botClient, update, update.Message);
+            }
+        }
+        if (update.Message != null)
+        {
+            if (update.Message.Type == MessageType.Location)
+            {
+                await HandleLocation(botClient, update.Message);
+            }
+            if (update.Message.Type == MessageType.ChatMemberLeft ||
+                update.Message.Type == MessageType.ChatMembersAdded ||
+                update.Message.Type == MessageType.ChatPhotoChanged ||
+                update.Message.Type == MessageType.ChatPhotoDeleted ||
+                update.Message.Type == MessageType.ChatTitleChanged ||
+                update.Message.Type == MessageType.MessageAutoDeleteTimerChanged ||
+                update.Message.Type == MessageType.MessagePinned)
+            {
+                await HandleSystemMessage(botClient, update, update.Message);
+            }
         }
     }
-    if (update.Message != null)
-    {
-        if (update.Message.Type == MessageType.Location)
-        {
-            await HandleLocation(botClient, update.Message);
-        }
-        if (update.Message.Type == MessageType.ChatMemberLeft ||
-            update.Message.Type == MessageType.ChatMembersAdded ||
-            update.Message.Type == MessageType.ChatPhotoChanged ||
-            update.Message.Type == MessageType.ChatPhotoDeleted ||
-            update.Message.Type == MessageType.ChatTitleChanged ||
-            update.Message.Type == MessageType.MessageAutoDeleteTimerChanged ||
-            update.Message.Type == MessageType.MessagePinned)
-        {
-            await HandleSystemMessage(botClient, update, update.Message);
-        }
-    }
+    catch { }
     return;
 }
 
@@ -833,8 +837,16 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         if (message.Text.StartsWith("/")) { try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { } }
         ChekPermitGroup(message, ref Permit);
         if (Permit == false) { return; }
+        InlineKeyboardMarkup inlineKeyboard = new(new[]
+        {
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(text: "Спрятать ⬆️", "PhoneRollUp"),
+            },
+
+        });
         string PhoneNumber = System.IO.File.ReadAllText($@"{DirectorySettings}\Phone.txt");
-        await botClient.SendTextMessageAsync(message.Chat.Id, PhoneNumber, disableNotification: true);
+        await botClient.SendTextMessageAsync(message.Chat.Id, PhoneNumber, replyMarkup: inlineKeyboard, disableNotification: true);
         return;
     }
     if (message.Text.StartsWith("/airlemons") || message.Text == "!airlemons")
@@ -1353,6 +1365,31 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
             {
                 await botClient.SendLocationAsync(callbackQuery.Message.Chat.Id, latitude: 55.959036f, longitude: 37.679662f, disableNotification: true, replyToMessageId: callbackQuery.Message.MessageId);
                 await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, "Тенистый бульвар, дом 11", disableNotification: true);
+                break;
+            }
+        case "PhoneRollUp":
+            {
+                InlineKeyboardMarkup inlineKeyboard = new(new[]
+                {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text: "Показать 👀", "PhoneRollDown"),
+                    },
+                });
+                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id,callbackQuery.Message.MessageId, "☎️ Номера телефонов нашего ЖК ⬇️", replyMarkup: inlineKeyboard);
+                break;
+            }
+        case "PhoneRollDown":
+            {
+                InlineKeyboardMarkup inlineKeyboard = new(new[]
+                {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData(text: "Спрятать ⬆️", "PhoneRollUp"),
+                    },
+                });
+                string PhoneNumber = System.IO.File.ReadAllText($@"{DirectorySettings}\Phone.txt");
+                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId, PhoneNumber, replyMarkup: inlineKeyboard);
                 break;
             }
     }
