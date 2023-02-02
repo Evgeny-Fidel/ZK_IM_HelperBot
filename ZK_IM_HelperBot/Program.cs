@@ -14,7 +14,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
 
-string version = "1.0.8";
+string version = "1.0.9";
 var autor = "";
 string TokenTelegramAPI = "";
 string TokenWeather = "";
@@ -1429,8 +1429,8 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                     new []
                     {
                         InlineKeyboardButton.WithCallbackData("🔔 Приветствие", $"ChangeD DHT {IDGroup} {IDUser}"),
-                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeP DHT {IDGroup} {IDUser}"),
-                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeM DHT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM DHT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP DHT {IDGroup} {IDUser}"),
                     },
                      new []
                     {
@@ -2126,7 +2126,6 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
 {
     bool DSM = false;
     bool Hello = false;
-    bool DelHello = false;
     string HelloText = "";
     if (message.Chat.Type == ChatType.Group || message.Chat.Type == ChatType.Supergroup)
     {
@@ -2140,7 +2139,6 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
             {
                 var DSMBD = reader.GetString("dsm");
                 var MesHello = reader.GetString("hello");
-                var DeleteHello = reader.GetString("delete_hello");
                 try { HelloText = reader.GetString("hello_text"); } catch { }
                 if (DSMBD == "True")
                 {
@@ -2149,10 +2147,6 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
                 if (MesHello == "True")
                 {
                     Hello = true;
-                }
-                if (DeleteHello == "True")
-                {
-                    DelHello = true;
                 }
             }
         }
@@ -2191,12 +2185,9 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
                 HelloText = HelloText.Replace("%username%", $"{NameUser}").Replace("%botname%", $"{botClient.GetMeAsync().Result.FirstName}");
             }
             var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, $"{HelloText}", disableNotification: true, parseMode: ParseMode.Html);
-            if (DelHello)
-            {
                 string TypeMessage = "Hello";
                 var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, TypeMessage, InfoDeleteMassage));
                 threadStart.Start();
-            }
         }
         catch { }
     }
@@ -2229,7 +2220,9 @@ async Task TimerDeleteMessage(ITelegramBotClient botClient, Update update, Messa
 {
     try
     {
-        string Type = TypeMessage.Replace("Hello", "delete_hello_time");
+        string TypeTime = TypeMessage.Replace("Hello", "delete_hello_time");
+        string TypeView = TypeMessage.Replace("Hello", "delete_hello");
+        bool Chek = false;
         int TimeDelete = 30;
         using (MySqlBase)
         {
@@ -2241,15 +2234,20 @@ async Task TimerDeleteMessage(ITelegramBotClient botClient, Update update, Messa
                 MySqlDataReader reader = command.ExecuteReader();
                 while (reader.Read())
                 {
-                    TimeDelete = Convert.ToInt32(reader.GetString(Type));
+                    TimeDelete = Convert.ToInt32(reader.GetString(TypeTime));
+                    Chek = Convert.ToBoolean(reader.GetString(TypeView));
                 }
             }
             catch { }
         }
-        await Task.Delay(TimeDelete * 1000);
-        await botClient.DeleteMessageAsync(InfoDeleteMassage.Chat.Id, InfoDeleteMassage.MessageId);
+        if (Chek)
+        {
+            await Task.Delay(TimeDelete * 1000);
+            await botClient.DeleteMessageAsync(InfoDeleteMassage.Chat.Id, InfoDeleteMassage.MessageId);
+        }
     }
     catch { }
+    return;
 }
 
 void WeatherSmileAll(double Temp, ref string Smiley, string WeatherValue, ref string SmileyWeather)
