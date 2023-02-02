@@ -14,14 +14,12 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
 
-string version = "1.0.6";
+string version = "1.0.8";
 var autor = "";
 string TokenTelegramAPI = "";
 string TokenWeather = "";
 string connStr = "";
 
-bool AutoUpdate = true;     // Включение/отключение функции автообновления бота
-int AutoUpdateMinete = 30;  // Частота проверки обновлений
 bool Logs = true;           // Включение/отключение логирования приватных сообщений в консоль
 bool WeatherLoc = true;     // Включение/отключение отправка погоды по геолокации
 
@@ -85,16 +83,6 @@ if (System.IO.File.Exists($"{DirectorySettings}/Authentication.txt"))
                     line = line.Replace("Autor =", "");
                     autor = line.Replace(" ", "");
                 }
-                if (line.StartsWith("Auto_Update ="))
-                {
-                    line = line.Replace("Auto_Update =", "");
-                    AutoUpdate = Convert.ToBoolean(line.Replace(" ", ""));
-                }
-                if (line.StartsWith("Auto_Update_Minute ="))
-                {
-                    line = line.Replace("Auto_Update_Minute =", "");
-                    AutoUpdateMinete = Convert.ToInt32(line.Replace(" ", ""));
-                }
                 if (line.StartsWith("Weather_Location ="))
                 {
                     line = line.Replace("Weather_Location =", "");
@@ -124,8 +112,6 @@ else
         "Pwd = ПАРОЛЬ\n\n" +
         "———————————————————————————Telegram BOT————————————————————————————\n" +
         "Autor = @evgeny_fidel\n" +
-        "Auto_Update = true\n" +
-        "Auto_Update_Minute = 30\n" +
         "Weather_Location = true" +
         "");
 }
@@ -134,16 +120,17 @@ else
 Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("en-US");
 
 MySqlConnection MySqlBase = new(connStr);
-try
+using (MySqlBase)
 {
-    MySqlBase.Open();
-    Console.WriteLine($"Успешное подключение к БД =)");
-    MySqlBase.Close();
-}
-catch
-{
-    MySqlBase.Close();
-    Console.WriteLine($"Не удалось подключиться к БД =(");
+    try
+    {
+        MySqlBase.Open();
+        Console.WriteLine($"Успешное подключение к БД =)");
+    }
+    catch
+    {
+        Console.WriteLine($"Не удалось подключиться к БД =(");
+    }
 }
 
 var botClient = new TelegramBotClient(TokenTelegramAPI);
@@ -181,15 +168,7 @@ if (Logs == true)
     Console.WriteLine($"\n" +
         $"——————————Settings——————————\n" +
         $"Autor = {autor}\n" +
-        $"Auto_Update = {AutoUpdate}\n" +
-        $"Auto_Update_Minute = {AutoUpdateMinete}\n" +
         $"Weather_Location = {WeatherLoc}\n");
-}
-if (AutoUpdate == true)
-{
-    //Timer timer = new(TimerCallback, null, 0, AutoUpdateMinete * 60 * 1000);
-    TimerCallback callback = new(UpdateBot);
-    Timer timer = new(callback, null, 0, AutoUpdateMinete * 60 * 1000);
 }
 Console.ReadLine();
 cts.Cancel();
@@ -198,6 +177,37 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
 {
     try
     {
+        string TypeMessage = null;
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"INSERT INTO BDUserPublic (id) VALUES ('{update.Message.From.Id}');";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                }
+                catch
+                {
+                    try
+                    {
+                        string cmdsql = $"SELECT * FROM BDUserPublic WHERE id = '{update.Message.From.Id}';";
+                        MySqlCommand command = new(cmdsql, MySqlBase);
+                        MySqlDataReader reader = command.ExecuteReader();
+                        while (reader.Read())
+                        {
+                            try { TypeMessage = reader.GetString("Type"); } catch { }
+                        }
+                    }
+                    catch { }
+                }
+            }
+        
+
+        if (TypeMessage != null)
+        {
+            await HandleMessageType(botClient, update, update.Message, TypeMessage);
+        }
         if (update.Type == UpdateType.Message && update?.Message?.Text != null)
         {
             await HandleMessage(botClient, update, update.Message);
@@ -235,124 +245,171 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
     return;
 }
 
+async Task HandleMessageType(ITelegramBotClient botClient, Update update, Message message, string TypeMessage)
+{
+    if (update.Type == UpdateType.Message && update?.Message?.Text != null)
+    {
+        if (message.Text.ToLower().StartsWith("/empty"))
+        {
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDUserPublic SET Type = NULL WHERE id = '{message.From.Id}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                    await botClient.SendTextMessageAsync(message.Chat, $"Отменено", disableNotification: true);
+                }
+                catch { }
+            }
+            return;
+        }
+        if (TypeMessage.StartsWith("EditTextHello"))
+        {
+            string[] Data = TypeMessage.Split(" ");
+            string IDGroup = Data[1];
+            string IDUser = Data[2];
+            if (IDUser != message.From.Id.ToString()) { return; }
+            string SaveText = message.Text;
+
+            if (SaveText.Length > 4000)
+            {
+                await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nСлишком длинное сообщение, максимум 4000 символов, а у Вас {SaveText.Length}", disableNotification: true);
+                return;
+            }
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET hello_text = '{SaveText}' WHERE id = '{IDGroup}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                    var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"Сохранено! Настройки чатов /my_chats", disableNotification: true);
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+                }
+            }
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDUserPublic SET Type = NULL WHERE id = '{message.From.Id}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                }
+                catch { }
+            }
+            return;
+        }
+        if (TypeMessage.StartsWith("EditTextMute"))
+        {
+            string[] Data = TypeMessage.Split(" ");
+            string IDGroup = Data[1];
+            string IDUser = Data[2];
+            if (IDUser != message.From.Id.ToString()) { return; }
+            string SaveText = message.Text;
+
+            if (SaveText.Length > 4000)
+            {
+                await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nСлишком длинное сообщение, максимум 4000 символов, а у Вас {SaveText.Length}", disableNotification: true);
+                return;
+            }
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET mute_text = '{SaveText}' WHERE id = '{IDGroup}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                    var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"Сохранено! Настройки чатов /my_chats", disableNotification: true);
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+                }
+            }
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDUserPublic SET Type = NULL WHERE id = '{message.From.Id}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                }
+                catch { }
+            }
+            return;
+        }
+        if (TypeMessage.StartsWith("EditTextRmute"))
+        {
+            string[] Data = TypeMessage.Split(" ");
+            string IDGroup = Data[1];
+            string IDUser = Data[2];
+            if (IDUser != message.From.Id.ToString()) { return; }
+            string SaveText = message.Text;
+
+            if (SaveText.Length > 4000)
+            {
+                await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nСлишком длинное сообщение, максимум 4000 символов, а у Вас {SaveText.Length}", disableNotification: true);
+                return;
+            }
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET rmute_text = '{SaveText}' WHERE id = '{IDGroup}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                    var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"Сохранено! Настройки чатов /my_chats", disableNotification: true);
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+                }
+            }
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDUserPublic SET Type = NULL WHERE id = '{message.From.Id}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                }
+                catch { }
+            }
+            return;
+        }
+    }
+    if (TypeMessage.StartsWith("SendMessage"))
+    {
+        string[] Data = TypeMessage.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != message.From.Id.ToString()) { return; }
+        if (message.Chat.Id.ToString() != IDUser) { return; }
+        if (update.Type == UpdateType.Message && update?.Message?.Text != null)
+        {
+            await botClient.SendTextMessageAsync(IDGroup, message.Text);
+        }
+        if (update.Type == UpdateType.Message && update?.Message?.Photo != null)
+        {
+            await botClient.SendPhotoAsync(IDGroup, message.Photo[0].FileId, message.Caption);
+        }
+        return;
+    }
+}
+
 async Task HandleMessage(ITelegramBotClient botClient, Update update, Message message)
 {
-    if (message.Text.ToLower().StartsWith("/hello_text "))
-    {
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        string SaveText = message.Text.Replace("/hello_text ", "");
-        if (SaveText == " " || SaveText == "")
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nНе указан текст для сохранения!", disableNotification: true);
-            return;
-        }
-        if (SaveText.Length > 4000)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nСлишком длинное сообщение, максимум 4000 символов, а у Вас {SaveText.Length}", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET hello_text = '{SaveText}' WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
-    if (message.Text.ToLower().StartsWith("/mute_text "))
-    {
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        string SaveText = message.Text.Replace("/mute_text ", "");
-        if (SaveText == " " || SaveText == "")
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nНе указан текст для сохранения!", disableNotification: true);
-            return;
-        }
-        if (SaveText.Length > 4000)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nСлишком длинное сообщение, максимум 4000 символов, а у Вас {SaveText.Length}", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET mute_text = '{SaveText}' WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
-    if (message.Text.ToLower().StartsWith("/rmute_text "))
-    {
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        string SaveText = message.Text.Replace("/rmute_text ", "");
-        if (SaveText == " " || SaveText == "")
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nНе указан текст для сохранения!", disableNotification: true);
-            return;
-        }
-        if (SaveText.Length > 4000)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Ошибка!\nСлишком длинное сообщение, максимум 4000 символов, а у Вас {SaveText.Length}", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET rmute_text = '{SaveText}' WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
-    
-
     message.Text = message.Text.ToLower();
     if (Logs == true && message.Chat.Type == ChatType.Private)
     {
@@ -744,6 +801,65 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             await botClient.SendTextMessageAsync(message.Chat, $"{chunk}", disableNotification: true);
         return;
     }
+    if (message.Text.StartsWith("/my_chats"))
+    {
+        if (message.Text.StartsWith("/")) { try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { } }
+        string IDGroup = "";
+        string TitleGroup = "";
+        string LinkUser = $"{message.From.FirstName} {message.From.LastName ?? " "}";
+        LinkUser = LinkUser.Replace("  ", "");
+        LinkUser = $"<a href=\"tg://user?id={message.From.Id}\">{LinkUser}</a>";
+        string MesText = $"{LinkUser}\nВот список Ваших чатов, где Вы являетесь администратором.\nВыберите тот чат, который хотите отредактировать.\n\n" +
+                "Если тут нет Вашего чата, значит либо Вы там не админ, либо я там не админ.";
+        var edit = await botClient.SendTextMessageAsync(message.Chat.Id, "Один момент, идет сканирование...", disableNotification: true);
+        try
+        {
+            using (MySqlBase)
+            {
+                MySqlBase.Open();
+                string cmdsql = "SELECT * FROM BDGroup;";
+                MySqlCommand command = new MySqlCommand(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                var inlineKeyboard = new List<InlineKeyboardButton[]>();
+                var buttonsRow = new List<InlineKeyboardButton>();
+                int countButtons = 0;
+                const int maxButtonsPerRow = 2;
+                var userId = message.From.Id;
+
+                while (reader.Read())
+                {
+                    IDGroup = reader.GetString("id");
+                    TitleGroup = reader.GetString("title");
+                    try
+                    {
+                        var admins = await botClient.GetChatAdministratorsAsync(IDGroup);
+                        var isAdmin = admins.Any(x => x.User.Id == userId);
+                        if (isAdmin)
+                        {
+                            buttonsRow.Add(InlineKeyboardButton.WithCallbackData(TitleGroup, $"SelectGroup {IDGroup} {message.From.Id}"));
+                            countButtons++;
+                            if (countButtons == maxButtonsPerRow)
+                            {
+                                inlineKeyboard.Add(buttonsRow.ToArray());
+                                buttonsRow.Clear();
+                                countButtons = 0;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                buttonsRow.Add(InlineKeyboardButton.WithCallbackData("Убрать сообщение", $"Clearn {message.From.Id}"));
+                if (buttonsRow.Any())
+                {
+                    inlineKeyboard.Add(buttonsRow.ToArray());
+                }
+                var inlineKeyboardMarkup = new InlineKeyboardMarkup(inlineKeyboard.ToArray());
+                await botClient.EditMessageTextAsync(message.Chat.Id, edit.MessageId, MesText, replyMarkup: inlineKeyboardMarkup, parseMode: ParseMode.Html);
+            }
+        }
+        catch { }
+        return;
+    }
 
     if (message.Text.StartsWith("/weather_im") || message.Text == "!weather_im")
     {
@@ -918,91 +1034,6 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         return;
     }
 
-
-    if (message.Text.StartsWith("/hello_text_clearn"))
-    {
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET hello_text = NULL WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
-    if (message.Text.StartsWith("/mute_text_clearn"))
-    {
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET mute_text = NULL WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
-    if (message.Text.StartsWith("/rmute_text_clearn"))
-    {
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET rmute_text = NULL WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
     if (message.Text.StartsWith("/mute"))
     {
         try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
@@ -1187,174 +1218,6 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         await botClient.SendTextMessageAsync(message.Chat, Text, disableNotification: true, replyToMessageId: message.ReplyToMessage.MessageId, parseMode: ParseMode.Html);
         return;
     }
-    if (message.Text.StartsWith("/auto_weather_loc_off"))
-    {
-        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET auto_weather_loc = '0' WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
-    if (message.Text.StartsWith("/auto_weather_loc_on"))
-    {
-        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET auto_weather_loc = '1' WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
-    if (message.Text.StartsWith("/dsm_off"))
-    {
-        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET dsm = '0' WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
-    if (message.Text.StartsWith("/dsm_on"))
-    {
-        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET dsm = '1' WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
-    if (message.Text.StartsWith("/hello_off"))
-    {
-        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET hello = '0' WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
-    if (message.Text.StartsWith("/hello_on"))
-    {
-        try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        ChekPermitGroup(message, ref Permit);
-        if (Permit == false) { return; }
-        ChatMember chatMemberYou = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id);
-        if (chatMemberYou.Status != ChatMemberStatus.Administrator && chatMemberYou.Status != ChatMemberStatus.Creator)
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"Данная команда предназначена только для администрации чата..", disableNotification: true);
-            return;
-        }
-        try
-        {
-            MySqlBase.Open();
-            string cmdsql = $"UPDATE BDGroup SET hello = '1' WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            command.ExecuteNonQuery();
-            var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-            await Task.Delay(1000);
-            await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-        }
-        catch
-        {
-            await botClient.SendTextMessageAsync(message.Chat, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
-        }
-        MySqlBase.Close();
-        return;
-    }
 }
 
 async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callbackQuery)
@@ -1393,6 +1256,730 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                 break;
             }
     }
+    if (callbackQuery.Data.StartsWith("ChangeD"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string TypeChange = Data[1].Replace("DHT", "delete_hello");
+        string IDGroup = Data[2];
+        string IDUser = Data[3];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        string TypeChangeBD = "";
+        using (MySqlBase)
+        {
+            MySqlBase.Open();
+            string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{IDGroup}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            MySqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                TypeChangeBD = reader.GetString(TypeChange);
+            }
+        }
+        if (TypeChangeBD == "True")
+        {
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET {TypeChange} = '0' WHERE id = '{IDGroup}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+                }
+            }
+        }
+        else
+        {
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET {TypeChange} = '1' WHERE id = '{IDGroup}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+                }
+            }
+        }
+        callbackQuery.Data = $"MenDelMes {IDGroup} {IDUser}";
+    }
+    if (callbackQuery.Data.StartsWith("DTimeP"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string TypeChange = Data[1].Replace("DHT", "delete_hello_time");
+        string IDGroup = Data[2];
+        string IDUser = Data[3];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        int TimeDeleteBD = 30;
+        using (MySqlBase)
+        {
+            MySqlBase.Open();
+            string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{IDGroup}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            MySqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                TimeDeleteBD = Convert.ToInt32(reader.GetString(TypeChange))+10;
+            }
+        }
+        if(TimeDeleteBD >= 10 && TimeDeleteBD <= 60)
+        {
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET {TypeChange} = '{TimeDeleteBD}' WHERE id = '{IDGroup}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+                }
+            }
+        }
+        callbackQuery.Data = $"MenDelMes {IDGroup} {IDUser}";
+    }
+    if (callbackQuery.Data.StartsWith("DTimeM"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string TypeChange = Data[1].Replace("DHT", "delete_hello_time");
+        string IDGroup = Data[2];
+        string IDUser = Data[3];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        int TimeDeleteBD = 30;
+        using (MySqlBase)
+        {
+            MySqlBase.Open();
+            string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{IDGroup}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            MySqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                TimeDeleteBD = Convert.ToInt32(reader.GetString(TypeChange))-10;
+            }
+        }
+        if (TimeDeleteBD >= 10 && TimeDeleteBD <= 60)
+        {
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET {TypeChange} = '{TimeDeleteBD}' WHERE id = '{IDGroup}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+                }
+            }
+        }
+        callbackQuery.Data = $"MenDelMes {IDGroup} {IDUser}";
+    }
+    if (callbackQuery.Data.StartsWith("MenDelMes"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+
+        var InfoUser = await botClient.GetChatAsync(IDUser);
+        string LinkUser = $"{InfoUser.FirstName} {InfoUser.LastName ?? " "}";
+        LinkUser = LinkUser.Replace("  ", "");
+        LinkUser = $"<a href=\"tg://user?id={IDUser}\">{LinkUser}</a>";
+
+        string TextMes = "";
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{IDGroup}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                string Title = "";
+                string DeleteHello = "";
+                int DeleteHelloTime = 30;
+
+                while (reader.Read())
+                {
+                    Title = reader.GetString("title");
+                    DeleteHello = reader.GetString("delete_hello").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    DeleteHelloTime = Convert.ToInt32(reader.GetString("delete_hello_time"));
+                }
+                TextMes = $"{LinkUser}\n" +
+                    $"Настройки удаления сообщений для группы \"{Title}\":\n" +
+                    $"Приветствия: {DeleteHello} через {DeleteHelloTime} сек.\n" +
+                    $"" +
+                    $"\nДиапозон времени должен быть от 10 до 60 секунд.";
+
+                InlineKeyboardMarkup inlineKeyboard = new(new[]
+                {
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("🔔 Приветствие", $"ChangeD DHT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeP DHT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeM DHT {IDGroup} {IDUser}"),
+                    },
+                     new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("⬅️ Назад", $"SelectGroup {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("✖️ Удалить", $"Clearn {IDUser}"),
+                    },
+                });
+                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId, TextMes, replyMarkup: inlineKeyboard, parseMode: ParseMode.Html);
+            }
+            catch { }
+        }
+        return;
+    }
+
+    if (callbackQuery.Data.StartsWith("SendMessage"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        var InfoGroup = await botClient.GetChatAsync(IDGroup);
+        string TitleGroup = InfoGroup.Title;
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"UPDATE BDUserPublic SET Type = 'SendMessage {IDGroup} {IDUser}' WHERE id = '{callbackQuery.From.Id}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                command.ExecuteNonQuery();
+                try { await botClient.SendTextMessageAsync(IDUser, $"Включен режим транслирования. Теперь все Ваши сообщения, написаные в этот чат, будут транслироваться в чат \"{TitleGroup}\"\n\nНа данный момент я могу транслировать:\n - текстовые сообщения\n - фото с текстом\n\nНажмите /empty для отмены.", disableNotification: true); }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Недоступно. начните разговор с ботом в личных сообщениях или перезапустите разговор командой /start", disableNotification: true);
+                }
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        return;
+    }
+    if (callbackQuery.Data.StartsWith("BackListGroup"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = "";
+        string IDUser = Data[1];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        string TitleGroup = "";
+        var InfoUser = await botClient.GetChatAsync(IDUser);
+        string LinkUser = $"{InfoUser.FirstName} {InfoUser.LastName ?? " "}";
+        LinkUser = LinkUser.Replace("  ", "");
+        LinkUser = $"<a href=\"tg://user?id={IDUser}\">{LinkUser}</a>";
+        string MesText = $"{LinkUser}\nВот список Ваших чатов, где Вы являетесь администратором.\nВыберите тот чат, который хотите отредактировать.\n\n" +
+                    "Если тут нет Вашего чата, значит либо Вы там не админ, либо я там не админ.";
+        await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId, "Один момент, идет сканирование...");
+        try
+        {
+            using (MySqlBase)
+            {
+                MySqlBase.Open();
+                string cmdsql = "SELECT * FROM BDGroup;";
+                MySqlCommand command = new MySqlCommand(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                var inlineKeyboard = new List<InlineKeyboardButton[]>();
+                var buttonsRow = new List<InlineKeyboardButton>();
+                int countButtons = 0;
+                const int maxButtonsPerRow = 2;
+                var userId = callbackQuery.Message.From.Id;
+
+                while (reader.Read())
+                {
+                    IDGroup = reader.GetString("id");
+                    TitleGroup = reader.GetString("title");
+                    try
+                    {
+                        var admins = await botClient.GetChatAdministratorsAsync(IDGroup);
+                        var isAdmin = admins.Any(x => x.User.Id == userId);
+                        if (isAdmin)
+                        {
+                            buttonsRow.Add(InlineKeyboardButton.WithCallbackData(TitleGroup, $"SelectGroup {IDGroup} {IDUser}"));
+                            countButtons++;
+                            if (countButtons == maxButtonsPerRow)
+                            {
+                                inlineKeyboard.Add(buttonsRow.ToArray());
+                                buttonsRow.Clear();
+                                countButtons = 0;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                buttonsRow.Add(InlineKeyboardButton.WithCallbackData("Убрать сообщение", $"Clearn {IDUser}"));
+                if (buttonsRow.Any())
+                {
+                    inlineKeyboard.Add(buttonsRow.ToArray());
+                }
+                var inlineKeyboardMarkup = new InlineKeyboardMarkup(inlineKeyboard.ToArray());
+                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId, MesText, replyMarkup: inlineKeyboardMarkup, parseMode: ParseMode.Html);
+            }
+        }
+        catch { }
+        return;
+    }
+    if (callbackQuery.Data.StartsWith("ChangeS"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string TypeChange = Data[1].Replace("awl", "auto_weather_loc");
+        string IDGroup = Data[2];
+        string IDUser = Data[3];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        string TypeChangeBD = "";
+        using (MySqlBase)
+        {
+            MySqlBase.Open();
+            string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{IDGroup}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            MySqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                TypeChangeBD = reader.GetString(TypeChange);
+            }
+        }
+        if (TypeChangeBD == "True")
+        {
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET {TypeChange} = '0' WHERE id = '{IDGroup}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+                }
+            }
+        }
+        else
+        {
+            using (MySqlBase)
+            {
+                try
+                {
+                    MySqlBase.Open();
+                    string cmdsql = $"UPDATE BDGroup SET {TypeChange} = '1' WHERE id = '{IDGroup}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    command.ExecuteNonQuery();
+                }
+                catch
+                {
+                    await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+                }
+            }
+        }
+        callbackQuery.Data = $"SelectGroup {IDGroup} {IDUser}";
+    }
+    if (callbackQuery.Data.StartsWith("ShowTextHello"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        string NameUser = "";
+        if (callbackQuery.From.Username == null)
+        {
+            NameUser = $"{callbackQuery.From.FirstName} {callbackQuery.From.LastName ?? " "}";
+            NameUser = NameUser.Replace("  ", "");
+            NameUser = $"<a href=\"tg://user?id={callbackQuery.From.Id}\">{NameUser}</a>";
+        }
+        else
+        {
+            NameUser = $"@{callbackQuery.From.Username}";
+        }
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{IDGroup}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                string hello_text = $"{NameUser} добро пожаловать!✌️\nЯ бот {botClient.GetMeAsync().Result.FirstName}, стараюсь помогать всем в этом чатике. Мои возможности - /help";
+                while (reader.Read())
+                {
+                    try { hello_text = reader.GetString("hello_text").Replace("%username%", $"{NameUser}").Replace("%botname%", $"{botClient.GetMeAsync().Result.FirstName}"); } catch { }
+                }
+                InlineKeyboardMarkup inlineKeyboard = new(new[]
+                {
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("Изменить", $"EditTextHello {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("Оставить", $"SelectGroup {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("Сделать по умолчанию", $"DafaultTextHello {IDGroup} {IDUser}"),
+                    },
+                });
+                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId, hello_text, replyMarkup: inlineKeyboard);
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        return;
+    }
+    if (callbackQuery.Data.StartsWith("DafaultTextHello"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"UPDATE BDGroup SET hello_text = NULL WHERE id = '{IDGroup}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                command.ExecuteNonQuery();
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        callbackQuery.Data = $"SelectGroup {IDGroup} {IDUser}";
+    }
+    if (callbackQuery.Data.StartsWith("EditTextHello"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"UPDATE BDUserPublic SET Type = 'EditTextHello {IDGroup} {IDUser}' WHERE id = '{callbackQuery.From.Id}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                command.ExecuteNonQuery();
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Введите Ваш текст приветствия:\n\n%username% - замениться на имя нового участника;\n%botname% - замениться на имя бота;\n\nНажмите /empty для отмены.", disableNotification: true);
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        return;
+    }
+    if (callbackQuery.Data.StartsWith("ShowTextMute"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        string NameUserBlock = "";
+        int MuteMinute = 1;
+        if (callbackQuery.From.Username == null)
+        {
+            NameUserBlock = $"{callbackQuery.From.FirstName} {callbackQuery.From.LastName ?? " "}";
+            NameUserBlock = NameUserBlock.Replace("  ", "");
+            NameUserBlock = $"<a href=\"tg://user?id={callbackQuery.From.Id}\">{NameUserBlock}</a>";
+        }
+        else
+        {
+            NameUserBlock = $"@{callbackQuery.From.Username}";
+        }
+        string NameUserGood = NameUserBlock;
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{IDGroup}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                string mute_text = $"❗️У {NameUserBlock} заблокированы пальцы в чате на {MuteMinute} {GetCorrectWordForm(MuteMinute, "минуту", "минуты", "минут")}\nСкажем спасибо {NameUserGood} 😉";
+                while (reader.Read())
+                {
+                    try { mute_text = reader.GetString("mute_text").Replace("%username_block%", $"{NameUserBlock}").Replace("%username_good%", $"{NameUserGood}").Replace("%time%", $"{MuteMinute} {GetCorrectWordForm(MuteMinute, "минуту", "минуты", "минут")}"); } catch { }
+                }
+                InlineKeyboardMarkup inlineKeyboard = new(new[]
+                {
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("Изменить", $"EditTextMute {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("Оставить", $"SelectGroup {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("Сделать по умолчанию", $"DafaultTextMute {IDGroup} {IDUser}"),
+                    },
+                });
+                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId, mute_text, replyMarkup: inlineKeyboard);
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        return;
+    }
+    if (callbackQuery.Data.StartsWith("DafaultTextMute"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"UPDATE BDGroup SET mute_text = NULL WHERE id = '{IDGroup}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                command.ExecuteNonQuery();
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        callbackQuery.Data = $"SelectGroup {IDGroup} {IDUser}";
+    }
+    if (callbackQuery.Data.StartsWith("EditTextMute"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"UPDATE BDUserPublic SET Type = 'EditTextMute {IDGroup} {IDUser}' WHERE id = '{callbackQuery.From.Id}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                command.ExecuteNonQuery();
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Введите Ваш текст при блокировке:\n\n%username_block% - замениться на имя того, кого нужно заблокировать;\n%username_good% - замениться на имя того, кто заблокировал;\n%time% - замениться на время блокировки;\n\nНажмите /empty для отмены.", disableNotification: true);
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        return;
+    }
+    if (callbackQuery.Data.StartsWith("ShowTextRmute"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        string NameUserBlock = "";
+        if (callbackQuery.From.Username == null)
+        {
+            NameUserBlock = $"{callbackQuery.From.FirstName} {callbackQuery.From.LastName ?? " "}";
+            NameUserBlock = NameUserBlock.Replace("  ", "");
+            NameUserBlock = $"<a href=\"tg://user?id={callbackQuery.From.Id}\">{NameUserBlock}</a>";
+        }
+        else
+        {
+            NameUserBlock = $"@{callbackQuery.From.Username}";
+        }
+        string NameUserGood = NameUserBlock;
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{IDGroup}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                string rmute_text = $"У {NameUserBlock} разблокированы пальцы в чате!";
+                while (reader.Read())
+                {
+                    try { rmute_text = reader.GetString("rmute_text").Replace("%username_block%", $"{NameUserBlock}").Replace("%username_good%", $"{NameUserGood}"); } catch { }
+                }
+                InlineKeyboardMarkup inlineKeyboard = new(new[]
+                {
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("Изменить", $"EditTextRmute {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("Оставить", $"SelectGroup {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("Сделать по умолчанию", $"DafaultTextRmute {IDGroup} {IDUser}"),
+                    },
+                });
+                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId, rmute_text, replyMarkup: inlineKeyboard);
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        return;
+    }
+    if (callbackQuery.Data.StartsWith("DafaultTextRmute"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"UPDATE BDGroup SET rmute_text = NULL WHERE id = '{IDGroup}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                command.ExecuteNonQuery();
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        callbackQuery.Data = $"SelectGroup {IDGroup} {IDUser}";
+    }
+    if (callbackQuery.Data.StartsWith("EditTextRmute"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"UPDATE BDUserPublic SET Type = 'EditTextRmute {IDGroup} {IDUser}' WHERE id = '{callbackQuery.From.Id}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                command.ExecuteNonQuery();
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Введите Ваш текст при разблокировке:\n\n%username_block% - замениться на имя того, кто заблокирован;\n%username_good% - замениться на имя того, кто разблокировал;\n\nНажмите /empty для отмены.", disableNotification: true);
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        return;
+    }
+    if (callbackQuery.Data.StartsWith("Clearn"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDUser = Data[1];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        await botClient.DeleteMessageAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId);
+    }
+    if (callbackQuery.Data.StartsWith("SelectGroup"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+
+        var InfoUser = await botClient.GetChatAsync(IDUser);
+        string LinkUser = $"{InfoUser.FirstName} {InfoUser.LastName ?? " "}";
+        LinkUser = LinkUser.Replace("  ", "");
+        LinkUser = $"<a href=\"tg://user?id={IDUser}\">{LinkUser}</a>";
+
+        string TextMes = "";
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{IDGroup}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                string Title = "";
+                string InfoPermit = "";
+                string AutoWeatherLoc = "";
+                string DSM = "";
+                string HelloBD = "";
+                string hello_text = "🚫 По умолчанию";
+                string mute_text = "🚫 По умолчанию";
+                string rmute_text = "🚫 По умолчанию";
+                while (reader.Read())
+                {
+                    Title = reader.GetString("title");
+                    InfoPermit = reader.GetString("permit").Replace("True", "✅ Активна").Replace("False", "🚫 Не активна");
+                    AutoWeatherLoc = reader.GetString("auto_weather_loc").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    DSM = reader.GetString("dsm").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    HelloBD = reader.GetString("hello").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    try { hello_text = reader.GetString("hello_text"); } catch { }
+                    try { mute_text = reader.GetString("mute_text"); } catch { }
+                    try { rmute_text = reader.GetString("rmute_text"); } catch { }
+                }
+                if (hello_text != "🚫 По умолчанию") { hello_text = "✅ Свой"; }
+                if (mute_text != "🚫 По умолчанию") { mute_text = "✅ Свой"; }
+                if (rmute_text != "🚫 По умолчанию") { rmute_text = "✅ Свой"; }
+                TextMes = $"{LinkUser}\n" +
+                    $"Настройки группы \"{Title}\":\n" +
+                    $"Лицензия бота: {InfoPermit}\n" +
+                    $"Показывать погоду по геолокации: {AutoWeatherLoc}\n" +
+                    $"Удаление системных сообщений: {DSM}\n" +
+                    $"Приветсвовать нового пользователя: {HelloBD}\n" +
+                    $"Текст приветствия: {hello_text}\n" +
+                    $"Текст блокировки: {mute_text}\n" +
+                    $"Текст разблокировки: {rmute_text}";
+
+                InlineKeyboardMarkup inlineKeyboard = new(new[]
+                {
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("☀️ Погода", $"ChangeS awl {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("ℹ️ Системные сообщения", $"ChangeS dsm {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("🔔 Приветствие", $"ChangeS hello {IDGroup} {IDUser}"),
+                    },
+                     new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("💬 Текст приветствия", $"ShowTextHello {IDGroup} {IDUser}"),
+                    },
+                     new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("💬 Текст блока", $"ShowTextMute {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("💬 Текст разблока", $"ShowTextRmute {IDGroup} {IDUser}"),
+                    },
+                      new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("💭 Транслировать сообщения", $"SendMessage {IDGroup} {IDUser}"),
+                    },
+                      new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("💭 Меню удаления сообщений", $"MenDelMes {IDGroup} {IDUser}"),
+                    },
+                     new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("⬅️ Назад", $"BackListGroup {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("🔄 Обновить", $"SelectGroup {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("✖️ Удалить", $"Clearn {IDUser}"),
+                    },
+                });
+                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId, TextMes, replyMarkup: inlineKeyboard, parseMode: ParseMode.Html);
+            }
+            catch { }
+        }
+    }
+    return;
 }
 
 async Task HandleMember(ITelegramBotClient botClient, Update update, Message message)
@@ -1539,6 +2126,7 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
 {
     bool DSM = false;
     bool Hello = false;
+    bool DelHello = false;
     string HelloText = "";
     if (message.Chat.Type == ChatType.Group || message.Chat.Type == ChatType.Supergroup)
     {
@@ -1552,6 +2140,7 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
             {
                 var DSMBD = reader.GetString("dsm");
                 var MesHello = reader.GetString("hello");
+                var DeleteHello = reader.GetString("delete_hello");
                 try { HelloText = reader.GetString("hello_text"); } catch { }
                 if (DSMBD == "True")
                 {
@@ -1560,6 +2149,10 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
                 if (MesHello == "True")
                 {
                     Hello = true;
+                }
+                if (DeleteHello == "True")
+                {
+                    DelHello = true;
                 }
             }
         }
@@ -1597,7 +2190,13 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
             {
                 HelloText = HelloText.Replace("%username%", $"{NameUser}").Replace("%botname%", $"{botClient.GetMeAsync().Result.FirstName}");
             }
-            await botClient.SendTextMessageAsync(message.Chat.Id, $"{HelloText}", disableNotification: true, parseMode: ParseMode.Html);
+            var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, $"{HelloText}", disableNotification: true, parseMode: ParseMode.Html);
+            if (DelHello)
+            {
+                string TypeMessage = "Hello";
+                var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, TypeMessage, InfoDeleteMassage));
+                threadStart.Start();
+            }
         }
         catch { }
     }
@@ -1605,7 +2204,7 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
     return;
 }
 
-Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
+async Task<Task> HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
 {
     var ErrorMessage = exception switch
     {
@@ -1626,54 +2225,31 @@ Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, 
 
 }
 
-void UpdateBot(object? state)
+async Task TimerDeleteMessage(ITelegramBotClient botClient, Update update, Message message, string TypeMessage, Message InfoDeleteMassage)
 {
-    if (Logs == true)
-    {
-        using var File = new StreamWriter(LogFileUpdate, true);
-        File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Начинаем проверку наличия новых версий..");
-    }
     try
     {
-        using (var client = new WebClient())
+        string Type = TypeMessage.Replace("Hello", "delete_hello_time");
+        int TimeDelete = 30;
+        using (MySqlBase)
         {
-            string latestVersion = client.DownloadString("https://gaffer-prog.evgeny-fidel.ru/zk_im_helperbot/");
-            if (!latestVersion.Contains(version))
+            try
             {
-                if (Logs == true)
+                MySqlBase.Open();
+                string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{message.Chat.Id}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                while (reader.Read())
                 {
-                    using var File = new StreamWriter(LogFileUpdate, true);
-                    File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Вышла новая версия, пробуем скачать..");
-                }
-                Console.WriteLine("Вышла новая версия бота! Начинаем обновление..");
-                client.DownloadFile("https://gaffer-prog.evgeny-fidel.ru/download/459/", DirectoryProg + @"/Update ZKIMHelperBot.zip");
-                client.DownloadFile("https://gaffer-prog.evgeny-fidel.ru/download/110/", DirectoryProg + @"/UpdaterProg.exe");
-                if (Logs == true)
-                {
-                    using var File = new StreamWriter(LogFileUpdate, true);
-                    File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Файлы обновления успешно скачались, пробуем обновиться..");
-                }
-                Process.Start(DirectoryProg + @"/UpdaterProg.exe");
-                Environment.Exit(0);
-            }
-            else
-            {
-                if (Logs == true)
-                {
-                    using var File = new StreamWriter(LogFileUpdate, true);
-                    File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Новых версий нет, работаем в прежнем режиме..");
+                    TimeDelete = Convert.ToInt32(reader.GetString(Type));
                 }
             }
+            catch { }
         }
+        await Task.Delay(TimeDelete * 1000);
+        await botClient.DeleteMessageAsync(InfoDeleteMassage.Chat.Id, InfoDeleteMassage.MessageId);
     }
-    catch (Exception ex)
-    {
-        if (Logs == true)
-        {
-            using var File = new StreamWriter(LogFileUpdate, true);
-            File.WriteLine($"{DateTime.Now:dd.MM.yy | HH:mm:ss} | Произошла ошибка: {ex.Message}");
-        }
-    }
+    catch { }
 }
 
 void WeatherSmileAll(double Temp, ref string Smiley, string WeatherValue, ref string SmileyWeather)
