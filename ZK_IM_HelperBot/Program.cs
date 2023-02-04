@@ -14,7 +14,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
 
-string version = "1.1.0";
+string version = "1.1.1";
 var autor = "";
 string TokenTelegramAPI = "";
 string TokenWeather = "";
@@ -1391,7 +1391,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
     if (callbackQuery.Data.StartsWith("DTimeM"))
     {
         string[] Data = callbackQuery.Data.Split(" ");
-        string TypeChange = Data[1].Replace("DHT", "delete_hello_time".Replace("START", "delete_start_time").Replace("HELP", "delete_help_time").Replace("INFO", "delete_info_time").Replace("WEAT", "delete_weather_time").Replace("PHON", "delete_phone_time").Replace("AIR", "delete_air_time").Replace("BUS", "delete_bus_time").Replace("CHAT", "delete_chats_time"));
+        string TypeChange = Data[1].Replace("DHT", "delete_hello_time").Replace("START", "delete_start_time").Replace("HELP", "delete_help_time").Replace("INFO", "delete_info_time").Replace("WEAT", "delete_weather_time").Replace("PHON", "delete_phone_time").Replace("AIR", "delete_air_time").Replace("BUS", "delete_bus_time").Replace("CHAT", "delete_chats_time");
         string IDGroup = Data[2];
         string IDUser = Data[3];
         if (IDUser != callbackQuery.From.Id.ToString()) { return; }
@@ -1507,18 +1507,20 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
 
                 }
                 TextMes = $"{LinkUser}\n" +
-                    $"Настройки удаления сообщений для группы \"{Title}\":\n" +
-                    $"Приветствие новый участников: {DeleteHello} через {DeleteHelloTime} сек.\n" +
-                    $"Сообщение команды /start: {DeleteStart} через {DeleteStartTime} сек.\n" +
-                    $"Сообщение команды /help: {DeleteHelp} через {DeleteHelpTime} сек.\n" +
-                    $"Сообщение команды /info: {DeleteInfo} через {DeleteInfoTime} сек.\n" +
-                    $"Сообщение команды /weather_im: {DeleteWeather} через {DeleteWeatherTime} сек.\n" +
-                    $"Сообщение команды /phone: {DeletePhone} через {DeletePhoneTime} сек.\n" +
-                    $"Сообщение команды /airlemons: {DeleteAir} через {DeleteAirTime} сек.\n" +
-                    $"Сообщение команды /bus: {DeleteBus} через {DeleteBusTime} сек.\n" +
-                    $"Сообщение команды /chats: {DeleteChats} через {DeleteChatsTime} сек.\n" +
+                    $"Настройки удаления сообщений для группы \n\"{Title}\":\n\n" +
+                    $"Статус | Время в секундах | Сообщения\n" +
+                    $"{DeleteHello} | {DeleteHelloTime} | приветствие новых участников\n" +
+                    $"{DeleteStart} | {DeleteStartTime} | /start\n" +
+                    $"{DeleteHelp} | {DeleteHelpTime} | /help\n" +
+                    $"{DeleteInfo} | {DeleteInfoTime} | /info\n" +
+                    $"{DeleteWeather} | {DeleteWeatherTime} | /weather_im\n" +
+                    $"{DeletePhone} | {DeletePhoneTime} | /phone\n" +
+                    $"{DeleteAir} | {DeleteAirTime} | /airlemons\n" +
+                    $"{DeleteBus} | {DeleteBusTime} | /bus\n" +
+                    $"{DeleteChats} | {DeleteChatsTime} | /chats\n" +
                     $"" +
-                    $"\nДиапозон времени должен быть от 10 до 120 секунд.";
+                    $"\nДиапозон времени должен быть от 10 до 120 секунд.\n" +
+                    $"Первая кнопка меняет статус, вторая и третья меняют настройки времени⬇️";
 
                 InlineKeyboardMarkup inlineKeyboard = new(new[]
                 {
@@ -1530,49 +1532,49 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                     },
                     new []
                     {
-                        InlineKeyboardButton.WithCallbackData("/start", $"ChangeD START {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("start", $"ChangeD START {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM START {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP START {IDGroup} {IDUser}"),
                     },
                     new []
                     {
-                        InlineKeyboardButton.WithCallbackData("/help", $"ChangeD HELP {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("help", $"ChangeD HELP {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM HELP {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP HELP {IDGroup} {IDUser}"),
                     },
                     new []
                     {
-                        InlineKeyboardButton.WithCallbackData("/info", $"ChangeD INFO {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("info", $"ChangeD INFO {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM INFO {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP INFO {IDGroup} {IDUser}"),
                     },
                     new []
                     {
-                        InlineKeyboardButton.WithCallbackData("/weather_im", $"ChangeD WEAT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("weather_im", $"ChangeD WEAT {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM WEAT {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP WEAT {IDGroup} {IDUser}"),
                     },
                     new []
                     {
-                        InlineKeyboardButton.WithCallbackData("/phone", $"ChangeD PHON {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("phone", $"ChangeD PHON {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM PHON {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP PHON {IDGroup} {IDUser}"),
                     },
                     new []
                     {
-                        InlineKeyboardButton.WithCallbackData("/airlemons", $"ChangeD AIR {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("airlemons", $"ChangeD AIR {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM AIR {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP AIR {IDGroup} {IDUser}"),
                     },
                     new []
                     {
-                        InlineKeyboardButton.WithCallbackData("/bus", $"ChangeD BUS {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("bus", $"ChangeD BUS {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM BUS {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP BUS {IDGroup} {IDUser}"),
                     },
                     new []
                     {
-                        InlineKeyboardButton.WithCallbackData("/chats", $"ChangeD CHAT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("chats", $"ChangeD CHAT {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM CHAT {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP CHAT {IDGroup} {IDUser}"),
                     },
