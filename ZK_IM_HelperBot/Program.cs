@@ -14,7 +14,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
 
-string version = "1.1.2";
+string version = "1.1.3";
 var autor = "";
 string TokenTelegramAPI = "";
 string TokenWeather = "";
@@ -641,11 +641,12 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         $"🥳 Всё для праздника, воздушные шарики, игрушки - \"Ботя, праздник\"\n" +
         $"💬 Лучшие чаты ЖК - \"Ботя, чаты\"\n" +
         $"🚌 Расписание автобуса - \"Ботя, автобус\"\n" +
-        $"❓ Забыл что я умею? - \"Ботя, помощь\"\n\n" +
+        $"❓ Забыл что я умею? - \"Ботя, помощь\"\n" +
+        $"🤖 Хотите добавить Ботю в свою группу? Тогда Вам необходимо прочитать <a href=\"https://telegra.ph/Botya-ZHK-IM-02-04\">данную статью.</a>\n\n" +
         $"⬇️ Так же все мои команды доступны по кнопке команд (рядом с кнопкой стикеров) или по команде /help";
 
         try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, Hello, disableNotification: true);
+        var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, Hello, disableNotification: true, parseMode: ParseMode.Html, disableWebPagePreview: true);
 
         if (message.Chat.Type == ChatType.Private)
         {
