@@ -14,7 +14,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
 
-string version = "1.1.1";
+string version = "1.1.2";
 var autor = "";
 string TokenTelegramAPI = "";
 string TokenWeather = "";
@@ -178,31 +178,31 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
     try
     {
         string TypeMessage = null;
-            using (MySqlBase)
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"INSERT INTO BDUserPublic (id) VALUES ('{update.Message.From.Id}');";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                command.ExecuteNonQuery();
+            }
+            catch
             {
                 try
                 {
-                    MySqlBase.Open();
-                    string cmdsql = $"INSERT INTO BDUserPublic (id) VALUES ('{update.Message.From.Id}');";
+                    string cmdsql = $"SELECT * FROM BDUserPublic WHERE id = '{update.Message.From.Id}';";
                     MySqlCommand command = new(cmdsql, MySqlBase);
-                    command.ExecuteNonQuery();
-                }
-                catch
-                {
-                    try
+                    MySqlDataReader reader = command.ExecuteReader();
+                    while (reader.Read())
                     {
-                        string cmdsql = $"SELECT * FROM BDUserPublic WHERE id = '{update.Message.From.Id}';";
-                        MySqlCommand command = new(cmdsql, MySqlBase);
-                        MySqlDataReader reader = command.ExecuteReader();
-                        while (reader.Read())
-                        {
-                            try { TypeMessage = reader.GetString("Type"); } catch { }
-                        }
+                        try { TypeMessage = reader.GetString("Type"); } catch { }
                     }
-                    catch { }
                 }
+                catch { }
             }
-        
+        }
+
 
         if (TypeMessage != null)
         {
@@ -214,7 +214,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
         }
         if (update.Type == UpdateType.CallbackQuery)
         {
-            await HandleCallbackQuery(botClient, update.CallbackQuery);
+            await HandleCallbackQuery(botClient, update.CallbackQuery, update);
         }
         if (update.MyChatMember != null)
         {
@@ -425,13 +425,14 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
     {
         if ($"@{message.From.Username.ToLower() ?? ""}" == autor)
         {
-            if (message.Text.StartsWith("/permit_true"))
+            if (message.Text.StartsWith("/permit_on"))
             {
                 try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+                string DatePermit = message.Text.Split(" ").Last();
                 try
                 {
                     MySqlBase.Open();
-                    string cmdsql = $"UPDATE BDGroup SET permit = '1' WHERE id = '{message.Chat.Id}';";
+                    string cmdsql = $"UPDATE BDGroup SET permit = '1', permit_date = '{DatePermit}' WHERE id = '{message.Chat.Id}';";
                     MySqlCommand command = new(cmdsql, MySqlBase);
                     command.ExecuteNonQuery();
                     var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
@@ -445,7 +446,7 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
                 MySqlBase.Close();
                 return;
             }
-            if (message.Text.StartsWith("/permit_false"))
+            if (message.Text.StartsWith("/permit_off"))
             {
                 try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
                 try
@@ -602,7 +603,7 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         {
             message.Text = "!start";
         }
-        if(TextBot.Contains("помощь") || TextBot.Contains("помоги") || TextBot.Contains("помочь") || TextBot.Contains("хелп"))
+        if (TextBot.Contains("помощь") || TextBot.Contains("помоги") || TextBot.Contains("помочь") || TextBot.Contains("хелп"))
         {
             message.Text = "!help";
         }
@@ -693,7 +694,7 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
 
         if (message.Text.StartsWith("/")) { try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { } }
         var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, Mes, disableNotification: true);
-        if(message.Chat.Type != ChatType.Private)
+        if (message.Chat.Type != ChatType.Private)
         {
             var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "HELP", InfoDeleteMassage));
             threadStart.Start();
@@ -815,7 +816,7 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
                 threadStart.Start();
             }
         }
-           
+
         return;
     }
     if (message.Text.StartsWith("/my_chats"))
@@ -1045,26 +1046,20 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         if (message.Text.StartsWith("/")) { try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { } }
         ChekPermitGroup(message, ref Permit);
         if (Permit == false) { return; }
-        InlineKeyboardMarkup inlineKeyboard = new(new[]
-        {
-            new[]
-            {
-                InlineKeyboardButton.WithUrl(text: "🚘 Попутчики", $"https://t.me/joinchat/UCXryFo9UJQ_Ge4F"),
-                InlineKeyboardButton.WithUrl(text: "💨 Отдам даром", $"https://t.me/vtoraya_gizn"),
-            },
-            new[]
-            {
-                InlineKeyboardButton.WithUrl(text: "🏰 Недвижимость", $"https://t.me/+ToOceSd3Nzdr9yOu"),
-                InlineKeyboardButton.WithUrl(text: "🔁 Купи - продай", $"https://t.me/imml_trade"),
-            },
-        });
-        var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id,
-            $"🚘 Попутчики - найди себе попутчика или сам им стань!\n" +
-            $"💨 Отдам даром - любители халявы или Вы просто очень щедрый, тогда Вам сюда\n" +
-            $"🏰 Недвижимость - тут явно только богатые обитают\n" +
-            $"🔁 Купи|продай - маленькое Авито\n" +
-            $"\n",
-            replyMarkup: inlineKeyboard, disableNotification: true);
+        var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, $"" +
+            $"<a href=\"https://t.me/+ThN-Koeuq_w0Zjdi\">🏛 ЖК Императорские Мытищи</a> - большой чат по всему ЖК\n" +
+            $"<a href=\"https://t.me/joinchat/UCXryFo9UJQ_Ge4F\">🚘 Попутчики</a> - найди себе попутчика или сам им стань\n" +
+            $"<a href=\"https://t.me/+ToOceSd3Nzdr9yOu\">🏰 Недвижимость</a> - тут явно только богатые обитают\n" +
+            $"<a href=\"https://t.me/imml_trade\">🔁 Купи|продай</a> - маленькое Авито\n" +
+            $"<a href=\"https://t.me/PitomezImperator_JK\">🐱 Питомцы</a> - чатик милоты\n" +
+            $"<a href=\"https://t.me/joinchat/FPwBZzdzxljDgpBP\">🦸‍♀️ Няни</a> - на любой вкус\n" +
+            $"\nЧаты по домам:\n" +
+            $"<a href=\"https://t.me/+0lm-l2ubYaAwYTUy\">🏠 Чат жильцов д.3</a>\n" +
+            $"<a href=\"https://t.me/im4dom\">🏠 Чат жильцов д.4</a>\n" +
+            $"<a href=\"https://t.me/joinchat/tt8OhuUdLrE5NTEy\">🏠 Чат жильцов д.6</a>\n" +
+            $"<a href=\"https://t.me/+trclaEQVtc84Nzcy\">🏠 Чат жильцов д.9</a>\n" +
+            $"\nОшибка? Добавить еще ссылок? Пишите {autor}",
+            disableNotification: true, parseMode: ParseMode.Html, disableWebPagePreview: true);
         if (message.Chat.Type != ChatType.Private)
         {
             var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "CHAT", InfoDeleteMassage));
@@ -1259,14 +1254,24 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
     }
 }
 
-async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callbackQuery)
+async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callbackQuery, Update update)
 {
     switch (callbackQuery.Data)
     {
         case "Airlemons_Shop":
             {
-                await botClient.SendLocationAsync(callbackQuery.Message.Chat.Id, latitude: 55.959036f, longitude: 37.679662f, disableNotification: true, replyToMessageId: callbackQuery.Message.MessageId);
-                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, "Тенистый бульвар, дом 11", disableNotification: true);
+                var InfoDeleteMassage = await botClient.SendLocationAsync(callbackQuery.Message.Chat.Id, latitude: 55.959036f, longitude: 37.679662f, disableNotification: true, replyToMessageId: callbackQuery.Message.MessageId);
+                if (callbackQuery.Message.Chat.Type != ChatType.Private)
+                {
+                    var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, callbackQuery.Message, "AIR", InfoDeleteMassage));
+                    threadStart.Start();
+                }
+                InfoDeleteMassage = await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, "Тенистый бульвар, дом 11", disableNotification: true);
+                if (callbackQuery.Message.Chat.Type != ChatType.Private)
+                {
+                    var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, callbackQuery.Message, "AIR", InfoDeleteMassage));
+                    threadStart.Start();
+                }
                 break;
             }
         case "PhoneRollUp":
@@ -1278,7 +1283,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                         InlineKeyboardButton.WithCallbackData(text: "Показать 👀", "PhoneRollDown"),
                     },
                 });
-                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id,callbackQuery.Message.MessageId, "☎️ Номера телефонов нашего ЖК ⬇️", replyMarkup: inlineKeyboard);
+                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId, "☎️ Номера телефонов нашего ЖК ⬇️", replyMarkup: inlineKeyboard);
                 break;
             }
         case "PhoneRollDown":
@@ -1366,10 +1371,10 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
             MySqlDataReader reader = command.ExecuteReader();
             while (reader.Read())
             {
-                TimeDeleteBD = Convert.ToInt32(reader.GetString(TypeChange))+10;
+                TimeDeleteBD = Convert.ToInt32(reader.GetString(TypeChange)) + 10;
             }
         }
-        if(TimeDeleteBD >= 10 && TimeDeleteBD <= 120)
+        if (TimeDeleteBD >= 10 && TimeDeleteBD <= 120)
         {
             using (MySqlBase)
             {
@@ -1404,7 +1409,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
             MySqlDataReader reader = command.ExecuteReader();
             while (reader.Read())
             {
-                TimeDeleteBD = Convert.ToInt32(reader.GetString(TypeChange))-10;
+                TimeDeleteBD = Convert.ToInt32(reader.GetString(TypeChange)) - 10;
             }
         }
         if (TimeDeleteBD >= 10 && TimeDeleteBD <= 120)
@@ -2058,6 +2063,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                 MySqlDataReader reader = command.ExecuteReader();
                 string Title = "";
                 string InfoPermit = "";
+                string DatePermit = "";
                 string AutoWeatherLoc = "";
                 string DSM = "";
                 string HelloBD = "";
@@ -2068,6 +2074,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                 {
                     Title = reader.GetString("title");
                     InfoPermit = reader.GetString("permit").Replace("True", "✅ Активна").Replace("False", "🚫 Не активна");
+                    DatePermit = reader.GetString("permit_date");
                     AutoWeatherLoc = reader.GetString("auto_weather_loc").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
                     DSM = reader.GetString("dsm").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
                     HelloBD = reader.GetString("hello").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
@@ -2080,7 +2087,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                 if (rmute_text != "🚫 По умолчанию") { rmute_text = "✅ Свой"; }
                 TextMes = $"{LinkUser}\n" +
                     $"Настройки группы \"{Title}\":\n" +
-                    $"Лицензия бота: {InfoPermit}\n" +
+                    $"Лицензия бота: {InfoPermit} до {DatePermit}\n" +
                     $"Показывать погоду по геолокации: {AutoWeatherLoc}\n" +
                     $"Удаление системных сообщений: {DSM}\n" +
                     $"Приветсвовать нового пользователя: {HelloBD}\n" +
@@ -2332,8 +2339,8 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
             }
             var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, $"{HelloText}", disableNotification: true, parseMode: ParseMode.Html);
 
-                var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "Hello", InfoDeleteMassage));
-                threadStart.Start();
+            var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "Hello", InfoDeleteMassage));
+            threadStart.Start();
         }
         catch { }
     }
@@ -2364,7 +2371,7 @@ async Task<Task> HandlePollingErrorAsync(ITelegramBotClient botClient, Exception
 
 async Task TimerDeleteMessage(ITelegramBotClient botClient, Update update, Message message, string TypeMessage, Message InfoDeleteMassage)
 {
-    if(message.Chat.Type != ChatType.Private)
+    if (message.Chat.Type != ChatType.Private)
     {
         try
         {
@@ -2468,27 +2475,48 @@ void ChekPermitGroup(Message message, ref bool Permit)
 {
     if (message.Chat.Type == ChatType.Group || message.Chat.Type == ChatType.Supergroup)
     {
-        try
+        var adminList = botClient.GetChatAdministratorsAsync(message.Chat.Id).Result; 
+        var botId = botClient.GetMeAsync().Result.Id; 
+
+        bool botIsAdmin = false;
+
+        foreach (var admin in adminList)
         {
-            MySqlBase.Open();
-            string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{message.Chat.Id}';";
-            MySqlCommand command = new(cmdsql, MySqlBase);
-            MySqlDataReader reader = command.ExecuteReader();
-            while (reader.Read())
+            if (admin.User.Id == botId)
             {
-                var Auto_currency = reader.GetString("permit");
-                if (Auto_currency == "True")
-                {
-                    Permit = true;
-                }
-                else
-                {
-                    Permit = false;
-                    botClient.SendTextMessageAsync(message.Chat.Id, $"⛔️ Отказано! Мои функции - заблокированы!\nАдминистрация группы, свяжитесь с {autor} для разблокировки!", disableNotification: true);
-                }
+                botIsAdmin = true;
+                break;
             }
         }
-        catch { Permit = true; }
+
+        if (botIsAdmin)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{message.Chat.Id}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    var Auto_currency = reader.GetString("permit");
+                    if (Auto_currency == "True")
+                    {
+                        Permit = true;
+                    }
+                    else
+                    {
+                        Permit = false;
+                        botClient.SendTextMessageAsync(message.Chat.Id, $"⛔️ Отказано! Мои функции - заблокированы!\nАдминистрация группы, свяжитесь с {autor} для разблокировки!", disableNotification: true);
+                    }
+                }
+            }
+            catch { Permit = true; }
+        }
+        else
+        {
+            botClient.SendTextMessageAsync(message.Chat.Id, $"Я не могу начать работать, так как я не являюсь администратором чата", disableNotification: true);
+        }
     }
     else
     {
