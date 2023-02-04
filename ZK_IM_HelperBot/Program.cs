@@ -13,8 +13,9 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
+using System.Globalization;
 
-string version = "1.1.3";
+string version = "1.1.4";
 var autor = "";
 string TokenTelegramAPI = "";
 string TokenWeather = "";
@@ -425,34 +426,70 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
     {
         if ($"@{message.From.Username.ToLower() ?? ""}" == autor)
         {
-            if (message.Text.StartsWith("/permit_on"))
+            if (message.Text.StartsWith("/pm"))
+            {
+                try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
+                string IDGroup = "";
+                string TitleGroup = "";
+
+                string MesText = $"🤖 Админ панель лицензий Боти\n\n";
+                var edit = await botClient.SendTextMessageAsync(message.Chat.Id, "Один момент, сейчас все выведу...", disableNotification: true);
+                try
+                {
+                    using (MySqlBase)
+                    {
+                        MySqlBase.Open();
+                        string cmdsql = "SELECT * FROM BDGroup;";
+                        MySqlCommand command = new MySqlCommand(cmdsql, MySqlBase);
+                        MySqlDataReader reader = command.ExecuteReader();
+                        int MiniIdGroup = 1;
+                        var inlineKeyboard = new List<InlineKeyboardButton[]>();
+                        var buttonsRow = new List<InlineKeyboardButton>();
+                        while (reader.Read())
+                        {
+                            string InfoPermit = "🚫";
+                            IDGroup = reader.GetString("id");
+                            TitleGroup = reader.GetString("title");
+                            DateTime today = DateTime.Today;
+                            DateTime DatePermit = DateTime.ParseExact(reader.GetString("permit_date"), "dd.MM.yyyy", CultureInfo.InvariantCulture);
+
+                            if (today <= DatePermit)
+                            {
+                                InfoPermit = "✅";
+                            }
+
+                            MesText += $"{MiniIdGroup}|{InfoPermit}|{DatePermit.ToString("dd.MM.yyyy")}|{TitleGroup}|{IDGroup}\n";
+
+                            buttonsRow.Add(InlineKeyboardButton.WithCallbackData("-30", $"EdDate -30 {IDGroup} {message.From.Id}"));
+                            buttonsRow.Add(InlineKeyboardButton.WithCallbackData("-1", $"EdDate -1 {IDGroup} {message.From.Id}"));
+                            buttonsRow.Add(InlineKeyboardButton.WithCallbackData($"{MiniIdGroup}", $"PerNow {IDGroup} {message.From.Id}"));
+                            buttonsRow.Add(InlineKeyboardButton.WithCallbackData("+1", $"EdDate 1 {IDGroup} {message.From.Id}"));
+                            buttonsRow.Add(InlineKeyboardButton.WithCallbackData("+30", $"EdDate 30 {IDGroup} {message.From.Id}"));
+                            inlineKeyboard.Add(buttonsRow.ToArray());
+                            buttonsRow.Clear();
+                            MiniIdGroup++;
+                        }
+                        buttonsRow.Add(InlineKeyboardButton.WithCallbackData("Обновить", $"MenPermit {message.From.Id}"));
+                        buttonsRow.Add(InlineKeyboardButton.WithCallbackData("Убрать сообщение", $"Clearn {message.From.Id}"));
+                        if (buttonsRow.Any())
+                        {
+                            inlineKeyboard.Add(buttonsRow.ToArray());
+                        }
+                        var inlineKeyboardMarkup = new InlineKeyboardMarkup(inlineKeyboard.ToArray());
+                        await botClient.EditMessageTextAsync(message.Chat.Id, edit.MessageId, MesText, replyMarkup: inlineKeyboardMarkup, parseMode: ParseMode.Html);
+                    }
+                }
+                catch { }
+                return;
+            }
+            if (message.Text.StartsWith("/permit"))
             {
                 try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
                 string DatePermit = message.Text.Split(" ").Last();
                 try
                 {
                     MySqlBase.Open();
-                    string cmdsql = $"UPDATE BDGroup SET permit = '1', permit_date = '{DatePermit}' WHERE id = '{message.Chat.Id}';";
-                    MySqlCommand command = new(cmdsql, MySqlBase);
-                    command.ExecuteNonQuery();
-                    var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
-                    await Task.Delay(1000);
-                    await botClient.DeleteMessageAsync(message.Chat.Id, mes.MessageId);
-                }
-                catch
-                {
-                    await botClient.SendTextMessageAsync(message.Chat, $"Что-то пошло не так.. Попробуйте чуточку позже!)", disableNotification: true);
-                }
-                MySqlBase.Close();
-                return;
-            }
-            if (message.Text.StartsWith("/permit_off"))
-            {
-                try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-                try
-                {
-                    MySqlBase.Open();
-                    string cmdsql = $"UPDATE BDGroup SET permit = '0' WHERE id = '{message.Chat.Id}';";
+                    string cmdsql = $"UPDATE BDGroup SET permit_date = '{DatePermit}' WHERE id = '{message.Chat.Id}';";
                     MySqlCommand command = new(cmdsql, MySqlBase);
                     command.ExecuteNonQuery();
                     var mes = await botClient.SendTextMessageAsync(message.Chat.Id, $"✅ Настройки обновлены!", disableNotification: true);
@@ -468,9 +505,6 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             }
             if (message.Text.StartsWith("/bd"))
             {
-                string hello_text = "-";
-                string mute_text = "-";
-                string rmute_text = "-";
                 try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
                 string Text = "";
                 try
@@ -501,28 +535,12 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
                     command = new MySqlCommand(cmdsql, MySqlBase);
                     reader = command.ExecuteReader();
                     Text = $"{Text}\nБД Групп:\n" +
-                        $"ID|Title|Type|AutoWeatherLoc|Permit|DSM|Hello|HelloText|MuteText|RmuteText\n";
+                        $"ID|Title\n";
                     while (reader.Read())
                     {
-                        hello_text = "-";
-                        mute_text = "-";
-                        rmute_text = "-";
                         string id = reader.GetString("id");
                         string title = reader.GetString("title");
-                        string type = reader.GetString("type");
-                        string AutoWeatherLoc = reader.GetString("auto_weather_loc");
-                        string permitbd = reader.GetString("permit");
-                        string DSM = reader.GetString("dsm");
-                        string HelloBD = reader.GetString("hello");
-                        try { hello_text = reader.GetString("hello_text").Replace("\n", " "); } catch { }
-                        try { mute_text = reader.GetString("mute_text").Replace("\n", " "); } catch { }
-                        try { rmute_text = reader.GetString("rmute_text").Replace("\n", " "); } catch { }
-
-                        if (id == "") { id = "-"; }
-                        if (title == "") { title = "-"; }
-                        if (type == "") { type = "-"; }
-
-                        Text = $"{Text}{id}|{title}|{type}|{AutoWeatherLoc}|{permitbd}|{DSM}|{HelloBD}|{hello_text}|{mute_text}|{rmute_text}\n";
+                        Text = $"{Text}{id}|{title}\n";
                     }
                     var chunks = Text.Chunk(4096).Select(chunk => string.Join("", chunk)).ToList();
 
@@ -734,88 +752,14 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             $"From Username: @{Username}\n" +
             $"From Name: {FirstName} {LastName}\n" +
             $"From ID: {ID}\n" +
-            $"From Member: {chatMember.Status}";
-        try
-        {
-            /*try // Пользователь
-            {
-                MySqlBase.Open();
-
-                var IDUser = message.From.Id;
-                if (message.ReplyToMessage != null)
-                {
-                    IDUser = message.ReplyToMessage.From.Id;
-                }
-                string cmdsql = $"SELECT * FROM BDUser WHERE id = '{IDUser}';";
-                MySqlCommand command = new(cmdsql, MySqlBase);
-                MySqlDataReader reader = command.ExecuteReader();
-                string saveurl = "";
-                string saveurlval = "";
-                string TestMes = "";
-                while (reader.Read())
-                {
-                    saveurl = reader.GetString("saveurl");
-                    saveurlval = reader.GetString("saveurlval");
-                    TestMes = reader.GetString("TestMes");
-                }
-                MySqlBase.Close();
-                TextMes = $"{TextMes}\n\n" +
-                    $"Информация из БД по пользователю:\n" +
-                    $"SaveUrl: {saveurl}\n" +
-                    $"SaveURLVal: {saveurlval}\n" +
-                    $"TestMes: {TestMes}";
-            }
-            catch { MySqlBase.Close(); }*/
-            try // Группа
-            {
-                MySqlBase.Open();
-                string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{message.Chat.Id}';";
-                MySqlCommand command = new(cmdsql, MySqlBase);
-                MySqlDataReader reader = command.ExecuteReader();
-                string Permit = "";
-                string AutoWeatherLoc = "";
-                string DSM = "";
-                string HelloBD = "";
-                string hello_text = "null";
-                string mute_text = "null";
-                string rmute_text = "null";
-                while (reader.Read())
-                {
-                    Permit = reader.GetString("permit");
-                    AutoWeatherLoc = reader.GetString("auto_weather_loc");
-                    DSM = reader.GetString("dsm");
-                    HelloBD = reader.GetString("hello");
-                    try { hello_text = reader.GetString("hello_text"); } catch { }
-                    try { mute_text = reader.GetString("mute_text"); } catch { }
-                    try { rmute_text = reader.GetString("rmute_text"); } catch { }
-                }
-                MySqlBase.Close();
-                TextMes = $"{TextMes}\n\n" +
-                    $"Информация из БД по группе:\n" +
-                    $"Permit: {Permit}\n" +
-                    $"AutoWeatherLoc: {AutoWeatherLoc}\n" +
-                    $"DSM: {DSM}\n" +
-                    $"Hello: {HelloBD}\n" +
-                    $"HelloText: {hello_text}\n" +
-                    $"MuteText: {mute_text}\n" +
-                    $"RmuteText: {rmute_text}";
-            }
-            catch { MySqlBase.Close(); }
-        }
-        catch { }
-        TextMes = $"{TextMes}\n\n" +
+            $"From Member: {chatMember.Status}\n\n" +
             $"Разработчик: @evgeny_fidel\n" +
             $"Версия бота: {version}\n";
-        var chunks = TextMes.Chunk(4096).Select(chunk => string.Join("", chunk)).ToList();
-
-        foreach (var chunk in chunks)
+        var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat, TextMes, disableNotification: true);
+        if (message.Chat.Type != ChatType.Private)
         {
-            var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat, $"{chunk}", disableNotification: true);
-            if (message.Chat.Type != ChatType.Private)
-            {
-                var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "INFO", InfoDeleteMassage));
-                threadStart.Start();
-            }
+            var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "INFO", InfoDeleteMassage));
+            threadStart.Start();
         }
 
         return;
@@ -1301,6 +1245,123 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                 break;
             }
     }
+    if (callbackQuery.Data.StartsWith("PerNow"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDGroup = Data[1];
+        string IDUser = Data[2];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        string FreePermitDay = DateTime.Now.ToString("dd.MM.yyyy");
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"UPDATE BDGroup SET permit_date = '{FreePermitDay}' WHERE id = '{IDGroup}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                command.ExecuteNonQuery();
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        callbackQuery.Data = $"MenPermit {IDUser}";
+    }
+    if (callbackQuery.Data.StartsWith("EdDate"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        int DateValue = Convert.ToInt32(Data[1]);
+        string IDGroup = Data[2];
+        string IDUser = Data[3];
+        if (IDUser != callbackQuery.From.Id.ToString()) { return; }
+        string TotalDate = "";
+        using (MySqlBase)
+        {
+            MySqlBase.Open();
+            string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{IDGroup}';";
+            MySqlCommand command = new(cmdsql, MySqlBase);
+            MySqlDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                DateTime DatePermit = DateTime.ParseExact(reader.GetString("permit_date"), "dd.MM.yyyy", CultureInfo.InvariantCulture);
+                TotalDate = DatePermit.AddDays(DateValue).ToString("dd.MM.yyyy");
+            }
+        }
+        using (MySqlBase)
+        {
+            try
+            {
+                MySqlBase.Open();
+                string cmdsql = $"UPDATE BDGroup SET permit_date = '{TotalDate}' WHERE id = '{IDGroup}';";
+                MySqlCommand command = new(cmdsql, MySqlBase);
+                command.ExecuteNonQuery();
+            }
+            catch
+            {
+                await botClient.SendTextMessageAsync(callbackQuery.Message.Chat.Id, $"❌Что-то пошло не так..\nПопробуйте чуточку позже!)", disableNotification: true);
+            }
+        }
+        callbackQuery.Data = $"MenPermit {IDUser}";
+    }
+    if (callbackQuery.Data.StartsWith("MenPermit"))
+    {
+        string[] Data = callbackQuery.Data.Split(" ");
+        string IDUser = Data[1];
+
+        string IDGroupBD = "";
+        string TitleGroup = "";
+
+        string MesText = $"🤖 Админ панель лицензий Боти\n\n";
+        try
+        {
+            using (MySqlBase)
+            {
+                MySqlBase.Open();
+                string cmdsql = "SELECT * FROM BDGroup;";
+                MySqlCommand command = new MySqlCommand(cmdsql, MySqlBase);
+                MySqlDataReader reader = command.ExecuteReader();
+                var inlineKeyboard = new List<InlineKeyboardButton[]>();
+                var buttonsRow = new List<InlineKeyboardButton>();
+                int MiniIdGroup = 1;
+                while (reader.Read())
+                {
+                    string InfoPermit = "🚫";
+                    IDGroupBD = reader.GetString("id");
+                    TitleGroup = reader.GetString("title");
+                    DateTime today = DateTime.Today;
+                    DateTime DatePermit = DateTime.ParseExact(reader.GetString("permit_date"), "dd.MM.yyyy", CultureInfo.InvariantCulture);
+
+                    if (today <= DatePermit)
+                    {
+                        InfoPermit = "✅";
+                    }
+
+                    MesText += $"{MiniIdGroup}|{InfoPermit}|{DatePermit.ToString("dd.MM.yyyy")}|{TitleGroup}|{IDGroupBD}\n";
+
+                    buttonsRow.Add(InlineKeyboardButton.WithCallbackData("-30", $"EdDate -30 {IDGroupBD} {IDUser}"));
+                    buttonsRow.Add(InlineKeyboardButton.WithCallbackData("-1", $"EdDate -1 {IDGroupBD} {IDUser}"));
+                    buttonsRow.Add(InlineKeyboardButton.WithCallbackData($"{MiniIdGroup}", $"PerNow {IDGroupBD} {IDUser}"));
+                    buttonsRow.Add(InlineKeyboardButton.WithCallbackData("+1", $"EdDate 1 {IDGroupBD} {IDUser}"));
+                    buttonsRow.Add(InlineKeyboardButton.WithCallbackData("+30", $"EdDate 30 {IDGroupBD} {IDUser}"));
+                    inlineKeyboard.Add(buttonsRow.ToArray());
+                    buttonsRow.Clear();
+                    MiniIdGroup++;
+                }
+                buttonsRow.Add(InlineKeyboardButton.WithCallbackData("Обновить", $"MenPermit {IDUser}"));
+                buttonsRow.Add(InlineKeyboardButton.WithCallbackData("Убрать сообщение", $"Clearn {IDUser}"));
+                if (buttonsRow.Any())
+                {
+                    inlineKeyboard.Add(buttonsRow.ToArray());
+                }
+                var inlineKeyboardMarkup = new InlineKeyboardMarkup(inlineKeyboard.ToArray());
+                await botClient.EditMessageTextAsync(callbackQuery.Message.Chat.Id, callbackQuery.Message.MessageId, MesText, replyMarkup: inlineKeyboardMarkup, parseMode: ParseMode.Html);
+            }
+        }
+        catch { }
+        return;
+    }
+
     if (callbackQuery.Data.StartsWith("ChangeD"))
     {
         string[] Data = callbackQuery.Data.Split(" ");
@@ -2063,8 +2124,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                 MySqlCommand command = new(cmdsql, MySqlBase);
                 MySqlDataReader reader = command.ExecuteReader();
                 string Title = "";
-                string InfoPermit = "";
-                string DatePermit = "";
+                string InfoPermit = "🚫 Не активна";
                 string AutoWeatherLoc = "";
                 string DSM = "";
                 string HelloBD = "";
@@ -2074,27 +2134,32 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                 while (reader.Read())
                 {
                     Title = reader.GetString("title");
-                    InfoPermit = reader.GetString("permit").Replace("True", "✅ Активна").Replace("False", "🚫 Не активна");
-                    DatePermit = reader.GetString("permit_date");
+                    DateTime today = DateTime.Today;
+                    DateTime DatePermit = DateTime.ParseExact(reader.GetString("permit_date"), "dd.MM.yyyy", CultureInfo.InvariantCulture);
+
+                    if (today <= DatePermit)
+                    {
+                        InfoPermit = "✅ Активна";
+                    }
                     AutoWeatherLoc = reader.GetString("auto_weather_loc").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
                     DSM = reader.GetString("dsm").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
                     HelloBD = reader.GetString("hello").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
                     try { hello_text = reader.GetString("hello_text"); } catch { }
                     try { mute_text = reader.GetString("mute_text"); } catch { }
                     try { rmute_text = reader.GetString("rmute_text"); } catch { }
+                    if (hello_text != "🚫 По умолчанию") { hello_text = "✅ Свой"; }
+                    if (mute_text != "🚫 По умолчанию") { mute_text = "✅ Свой"; }
+                    if (rmute_text != "🚫 По умолчанию") { rmute_text = "✅ Свой"; }
+                    TextMes = $"{LinkUser}\n" +
+                        $"Настройки группы \"{Title}\":\n" +
+                        $"Лицензия бота: {InfoPermit} до {DatePermit.ToString("dd.MM.yyyy")}\n" +
+                        $"Показывать погоду по геолокации: {AutoWeatherLoc}\n" +
+                        $"Удаление системных сообщений: {DSM}\n" +
+                        $"Приветсвовать нового пользователя: {HelloBD}\n" +
+                        $"Текст приветствия: {hello_text}\n" +
+                        $"Текст блокировки: {mute_text}\n" +
+                        $"Текст разблокировки: {rmute_text}";
                 }
-                if (hello_text != "🚫 По умолчанию") { hello_text = "✅ Свой"; }
-                if (mute_text != "🚫 По умолчанию") { mute_text = "✅ Свой"; }
-                if (rmute_text != "🚫 По умолчанию") { rmute_text = "✅ Свой"; }
-                TextMes = $"{LinkUser}\n" +
-                    $"Настройки группы \"{Title}\":\n" +
-                    $"Лицензия бота: {InfoPermit} до {DatePermit}\n" +
-                    $"Показывать погоду по геолокации: {AutoWeatherLoc}\n" +
-                    $"Удаление системных сообщений: {DSM}\n" +
-                    $"Приветсвовать нового пользователя: {HelloBD}\n" +
-                    $"Текст приветствия: {hello_text}\n" +
-                    $"Текст блокировки: {mute_text}\n" +
-                    $"Текст разблокировки: {rmute_text}";
 
                 InlineKeyboardMarkup inlineKeyboard = new(new[]
                 {
@@ -2167,8 +2232,9 @@ async Task HandleMember(ITelegramBotClient botClient, Update update, Message mes
         }
         try
         {
+            string FreePermitDay = DateTime.Now.AddDays(14).ToString("dd.MM.yyyy");
             MySqlBase.Open();
-            string cmdsql = $"INSERT INTO BDGroup (id, title, type) VALUES ('{ChatID}', '{ChatTitle}', '{ChatTypeS}');";
+            string cmdsql = $"INSERT INTO BDGroup (id, title, type, permit_date) VALUES ('{ChatID}', '{ChatTitle}', '{ChatTypeS}', '{FreePermitDay}');";
             MySqlCommand command = new(cmdsql, MySqlBase);
             command.ExecuteNonQuery();
         }
@@ -2476,8 +2542,8 @@ void ChekPermitGroup(Message message, ref bool Permit)
 {
     if (message.Chat.Type == ChatType.Group || message.Chat.Type == ChatType.Supergroup)
     {
-        var adminList = botClient.GetChatAdministratorsAsync(message.Chat.Id).Result; 
-        var botId = botClient.GetMeAsync().Result.Id; 
+        var adminList = botClient.GetChatAdministratorsAsync(message.Chat.Id).Result;
+        var botId = botClient.GetMeAsync().Result.Id;
 
         bool botIsAdmin = false;
 
@@ -2500,8 +2566,9 @@ void ChekPermitGroup(Message message, ref bool Permit)
                 MySqlDataReader reader = command.ExecuteReader();
                 while (reader.Read())
                 {
-                    var Auto_currency = reader.GetString("permit");
-                    if (Auto_currency == "True")
+                    DateTime today = DateTime.Today;
+                    DateTime DatePermit = DateTime.ParseExact(reader.GetString("permit_date"), "dd.MM.yyyy", CultureInfo.InvariantCulture);
+                    if (today <= DatePermit)
                     {
                         Permit = true;
                     }
