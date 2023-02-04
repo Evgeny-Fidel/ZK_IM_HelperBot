@@ -14,7 +14,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
 
-string version = "1.0.9";
+string version = "1.1.0";
 var autor = "";
 string TokenTelegramAPI = "";
 string TokenWeather = "";
@@ -644,7 +644,7 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         $"⬇️ Так же все мои команды доступны по кнопке команд (рядом с кнопкой стикеров) или по команде /help";
 
         try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { }
-        await botClient.SendTextMessageAsync(message.Chat.Id, Hello, disableNotification: true);
+        var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, Hello, disableNotification: true);
 
         if (message.Chat.Type == ChatType.Private)
         {
@@ -670,7 +670,11 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             }
             MySqlBase.Close();
         }
-
+        else
+        {
+            var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "START", InfoDeleteMassage));
+            threadStart.Start();
+        }
         return;
     }
     if (message.Text.StartsWith("/help") || message.Text == "!help")
@@ -688,7 +692,12 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             $"\n⬇️ Так же все мои команды доступны по кнопке команд (рядом с кнопкой стикеров)";
 
         if (message.Text.StartsWith("/")) { try { await botClient.DeleteMessageAsync(message.Chat.Id, message.MessageId); } catch { } }
-        await botClient.SendTextMessageAsync(message.Chat.Id, Mes, disableNotification: true);
+        var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, Mes, disableNotification: true);
+        if(message.Chat.Type != ChatType.Private)
+        {
+            var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "HELP", InfoDeleteMassage));
+            threadStart.Start();
+        }
         return;
     }
     if (message.Text.StartsWith("/info"))
@@ -798,7 +807,15 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         var chunks = TextMes.Chunk(4096).Select(chunk => string.Join("", chunk)).ToList();
 
         foreach (var chunk in chunks)
-            await botClient.SendTextMessageAsync(message.Chat, $"{chunk}", disableNotification: true);
+        {
+            var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat, $"{chunk}", disableNotification: true);
+            if (message.Chat.Type != ChatType.Private)
+            {
+                var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "INFO", InfoDeleteMassage));
+                threadStart.Start();
+            }
+        }
+           
         return;
     }
     if (message.Text.StartsWith("/my_chats"))
@@ -929,6 +946,11 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         {
             await botClient.EditMessageTextAsync(message.Chat, mes.MessageId, $"К сожалению произошла ошибка, попробуйте чуточку позже 😔");
         }
+        if (message.Chat.Type != ChatType.Private)
+        {
+            var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "WEAT", mes));
+            threadStart.Start();
+        }
         return;
     }
     if (message.Text.StartsWith("/setting_weather") || message.Text == "!setting_weather")
@@ -962,7 +984,12 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
 
         });
         string PhoneNumber = System.IO.File.ReadAllText($@"{DirectorySettings}\Phone.txt");
-        await botClient.SendTextMessageAsync(message.Chat.Id, PhoneNumber, replyMarkup: inlineKeyboard, disableNotification: true);
+        var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, PhoneNumber, replyMarkup: inlineKeyboard, disableNotification: true);
+        if (message.Chat.Type != ChatType.Private)
+        {
+            var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "PHON", InfoDeleteMassage));
+            threadStart.Start();
+        }
         return;
     }
     if (message.Text.StartsWith("/airlemons") || message.Text == "!airlemons")
@@ -987,12 +1014,16 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
             },
 
         });
-        await botClient.SendTextMessageAsync(message.Chat.Id,
+        var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id,
             $"🎊 О видимо у Вас скоро праздник, поздравляю!\n" +
             $"Лучшие товары для праздника, игрушки, воздушные шарики и не только, есть у этих ребят!\nВсе их контакты доступны по кнопкам.\n" +
             $"А так же их магазин прямо у нас в ЖК! 😉",
             replyMarkup: inlineKeyboard, disableNotification: true);
-
+        if (message.Chat.Type != ChatType.Private)
+        {
+            var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "AIR", InfoDeleteMassage));
+            threadStart.Start();
+        }
         return;
     }
     if (message.Text.StartsWith("/bus") || message.Text == "!bus")
@@ -1001,8 +1032,12 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
         ChekPermitGroup(message, ref Permit);
         if (Permit == false) { return; }
         await using Stream stream = System.IO.File.OpenRead(@$"{DirectorySettings}/Bus.jpg");
-        await botClient.SendPhotoAsync(message.Chat.Id, new InputOnlineFile(stream, @$"{DirectorySettings}/Bus.jpg"), disableNotification: true);
-        //caption: "My Photo",
+        var InfoDeleteMassage = await botClient.SendPhotoAsync(message.Chat.Id, new InputOnlineFile(stream, @$"{DirectorySettings}/Bus.jpg"), disableNotification: true);
+        if (message.Chat.Type != ChatType.Private)
+        {
+            var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "BUS", InfoDeleteMassage));
+            threadStart.Start();
+        }
         return;
     }
     if (message.Text.StartsWith("/chats") || message.Text == "!chats")
@@ -1023,14 +1058,18 @@ async Task HandleMessage(ITelegramBotClient botClient, Update update, Message me
                 InlineKeyboardButton.WithUrl(text: "🔁 Купи - продай", $"https://t.me/imml_trade"),
             },
         });
-        await botClient.SendTextMessageAsync(message.Chat.Id,
+        var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id,
             $"🚘 Попутчики - найди себе попутчика или сам им стань!\n" +
             $"💨 Отдам даром - любители халявы или Вы просто очень щедрый, тогда Вам сюда\n" +
             $"🏰 Недвижимость - тут явно только богатые обитают\n" +
             $"🔁 Купи|продай - маленькое Авито\n" +
             $"\n",
             replyMarkup: inlineKeyboard, disableNotification: true);
-
+        if (message.Chat.Type != ChatType.Private)
+        {
+            var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "CHAT", InfoDeleteMassage));
+            threadStart.Start();
+        }
         return;
     }
 
@@ -1259,7 +1298,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
     if (callbackQuery.Data.StartsWith("ChangeD"))
     {
         string[] Data = callbackQuery.Data.Split(" ");
-        string TypeChange = Data[1].Replace("DHT", "delete_hello");
+        string TypeChange = Data[1].Replace("DHT", "delete_hello").Replace("START", "delete_start").Replace("HELP", "delete_help").Replace("INFO", "delete_info").Replace("WEAT", "delete_weather").Replace("PHON", "delete_phone").Replace("AIR", "delete_air").Replace("BUS", "delete_bus").Replace("CHAT", "delete_chats");
         string IDGroup = Data[2];
         string IDUser = Data[3];
         if (IDUser != callbackQuery.From.Id.ToString()) { return; }
@@ -1314,7 +1353,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
     if (callbackQuery.Data.StartsWith("DTimeP"))
     {
         string[] Data = callbackQuery.Data.Split(" ");
-        string TypeChange = Data[1].Replace("DHT", "delete_hello_time");
+        string TypeChange = Data[1].Replace("DHT", "delete_hello_time").Replace("START", "delete_start_time").Replace("HELP", "delete_help_time").Replace("INFO", "delete_info_time").Replace("WEAT", "delete_weather_time").Replace("PHON", "delete_phone_time").Replace("AIR", "delete_air_time").Replace("BUS", "delete_bus_time").Replace("CHAT", "delete_chats_time");
         string IDGroup = Data[2];
         string IDUser = Data[3];
         if (IDUser != callbackQuery.From.Id.ToString()) { return; }
@@ -1330,7 +1369,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                 TimeDeleteBD = Convert.ToInt32(reader.GetString(TypeChange))+10;
             }
         }
-        if(TimeDeleteBD >= 10 && TimeDeleteBD <= 60)
+        if(TimeDeleteBD >= 10 && TimeDeleteBD <= 120)
         {
             using (MySqlBase)
             {
@@ -1352,7 +1391,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
     if (callbackQuery.Data.StartsWith("DTimeM"))
     {
         string[] Data = callbackQuery.Data.Split(" ");
-        string TypeChange = Data[1].Replace("DHT", "delete_hello_time");
+        string TypeChange = Data[1].Replace("DHT", "delete_hello_time".Replace("START", "delete_start_time").Replace("HELP", "delete_help_time").Replace("INFO", "delete_info_time").Replace("WEAT", "delete_weather_time").Replace("PHON", "delete_phone_time").Replace("AIR", "delete_air_time").Replace("BUS", "delete_bus_time").Replace("CHAT", "delete_chats_time"));
         string IDGroup = Data[2];
         string IDUser = Data[3];
         if (IDUser != callbackQuery.From.Id.ToString()) { return; }
@@ -1368,7 +1407,7 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                 TimeDeleteBD = Convert.ToInt32(reader.GetString(TypeChange))-10;
             }
         }
-        if (TimeDeleteBD >= 10 && TimeDeleteBD <= 60)
+        if (TimeDeleteBD >= 10 && TimeDeleteBD <= 120)
         {
             using (MySqlBase)
             {
@@ -1412,25 +1451,130 @@ async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callb
                 string DeleteHello = "";
                 int DeleteHelloTime = 30;
 
+                string DeleteStart = "";
+                int DeleteStartTime = 30;
+
+                string DeleteHelp = "";
+                int DeleteHelpTime = 30;
+
+                string DeleteInfo = "";
+                int DeleteInfoTime = 30;
+
+                string DeleteWeather = "";
+                int DeleteWeatherTime = 30;
+
+                string DeletePhone = "";
+                int DeletePhoneTime = 30;
+
+                string DeleteAir = "";
+                int DeleteAirTime = 30;
+
+                string DeleteBus = "";
+                int DeleteBusTime = 30;
+
+                string DeleteChats = "";
+                int DeleteChatsTime = 30;
+
                 while (reader.Read())
                 {
                     Title = reader.GetString("title");
                     DeleteHello = reader.GetString("delete_hello").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
                     DeleteHelloTime = Convert.ToInt32(reader.GetString("delete_hello_time"));
+
+                    DeleteStart = reader.GetString("delete_start").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    DeleteStartTime = Convert.ToInt32(reader.GetString("delete_start_time"));
+
+                    DeleteHelp = reader.GetString("delete_help").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    DeleteHelpTime = Convert.ToInt32(reader.GetString("delete_help_time"));
+
+                    DeleteInfo = reader.GetString("delete_info").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    DeleteInfoTime = Convert.ToInt32(reader.GetString("delete_info_time"));
+
+                    DeleteWeather = reader.GetString("delete_weather").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    DeleteWeatherTime = Convert.ToInt32(reader.GetString("delete_weather_time"));
+
+                    DeletePhone = reader.GetString("delete_phone").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    DeletePhoneTime = Convert.ToInt32(reader.GetString("delete_phone_time"));
+
+                    DeleteAir = reader.GetString("delete_air").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    DeleteAirTime = Convert.ToInt32(reader.GetString("delete_air_time"));
+
+                    DeleteBus = reader.GetString("delete_bus").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    DeleteBusTime = Convert.ToInt32(reader.GetString("delete_bus_time"));
+
+                    DeleteChats = reader.GetString("delete_chats").Replace("True", "✅ Вкл").Replace("False", "🚫 Выкл");
+                    DeleteChatsTime = Convert.ToInt32(reader.GetString("delete_chats_time"));
+
                 }
                 TextMes = $"{LinkUser}\n" +
                     $"Настройки удаления сообщений для группы \"{Title}\":\n" +
-                    $"Приветствия: {DeleteHello} через {DeleteHelloTime} сек.\n" +
+                    $"Приветствие новый участников: {DeleteHello} через {DeleteHelloTime} сек.\n" +
+                    $"Сообщение команды /start: {DeleteStart} через {DeleteStartTime} сек.\n" +
+                    $"Сообщение команды /help: {DeleteHelp} через {DeleteHelpTime} сек.\n" +
+                    $"Сообщение команды /info: {DeleteInfo} через {DeleteInfoTime} сек.\n" +
+                    $"Сообщение команды /weather_im: {DeleteWeather} через {DeleteWeatherTime} сек.\n" +
+                    $"Сообщение команды /phone: {DeletePhone} через {DeletePhoneTime} сек.\n" +
+                    $"Сообщение команды /airlemons: {DeleteAir} через {DeleteAirTime} сек.\n" +
+                    $"Сообщение команды /bus: {DeleteBus} через {DeleteBusTime} сек.\n" +
+                    $"Сообщение команды /chats: {DeleteChats} через {DeleteChatsTime} сек.\n" +
                     $"" +
-                    $"\nДиапозон времени должен быть от 10 до 60 секунд.";
+                    $"\nДиапозон времени должен быть от 10 до 120 секунд.";
 
                 InlineKeyboardMarkup inlineKeyboard = new(new[]
                 {
                     new []
                     {
-                        InlineKeyboardButton.WithCallbackData("🔔 Приветствие", $"ChangeD DHT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("Приветствие", $"ChangeD DHT {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM DHT {IDGroup} {IDUser}"),
                         InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP DHT {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("/start", $"ChangeD START {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM START {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP START {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("/help", $"ChangeD HELP {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM HELP {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP HELP {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("/info", $"ChangeD INFO {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM INFO {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP INFO {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("/weather_im", $"ChangeD WEAT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM WEAT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP WEAT {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("/phone", $"ChangeD PHON {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM PHON {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP PHON {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("/airlemons", $"ChangeD AIR {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM AIR {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP AIR {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("/bus", $"ChangeD BUS {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM BUS {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP BUS {IDGroup} {IDUser}"),
+                    },
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("/chats", $"ChangeD CHAT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("-10 сек", $"DTimeM CHAT {IDGroup} {IDUser}"),
+                        InlineKeyboardButton.WithCallbackData("+10 сек", $"DTimeP CHAT {IDGroup} {IDUser}"),
                     },
                      new []
                     {
@@ -2185,8 +2329,8 @@ async Task HandleSystemMessage(ITelegramBotClient botClient, Update update, Mess
                 HelloText = HelloText.Replace("%username%", $"{NameUser}").Replace("%botname%", $"{botClient.GetMeAsync().Result.FirstName}");
             }
             var InfoDeleteMassage = await botClient.SendTextMessageAsync(message.Chat.Id, $"{HelloText}", disableNotification: true, parseMode: ParseMode.Html);
-                string TypeMessage = "Hello";
-                var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, TypeMessage, InfoDeleteMassage));
+
+                var threadStart = new Thread(() => TimerDeleteMessage(botClient, update, update.Message, "Hello", InfoDeleteMassage));
                 threadStart.Start();
         }
         catch { }
@@ -2218,35 +2362,38 @@ async Task<Task> HandlePollingErrorAsync(ITelegramBotClient botClient, Exception
 
 async Task TimerDeleteMessage(ITelegramBotClient botClient, Update update, Message message, string TypeMessage, Message InfoDeleteMassage)
 {
-    try
+    if(message.Chat.Type != ChatType.Private)
     {
-        string TypeTime = TypeMessage.Replace("Hello", "delete_hello_time");
-        string TypeView = TypeMessage.Replace("Hello", "delete_hello");
-        bool Chek = false;
-        int TimeDelete = 30;
-        using (MySqlBase)
+        try
         {
-            try
+            string TypeTime = TypeMessage.Replace("Hello", "delete_hello_time").Replace("START", "delete_start_time").Replace("HELP", "delete_help_time").Replace("INFO", "delete_info_time").Replace("WEAT", "delete_weather_time").Replace("PHON", "delete_phone_time").Replace("AIR", "delete_air_time").Replace("BUS", "delete_bus_time").Replace("CHAT", "delete_chats_time");
+            string TypeView = TypeMessage.Replace("Hello", "delete_hello").Replace("START", "delete_start").Replace("HELP", "delete_help").Replace("INFO", "delete_info").Replace("WEAT", "delete_weather").Replace("PHON", "delete_phone").Replace("AIR", "delete_air").Replace("BUS", "delete_bus").Replace("CHAT", "delete_chats");
+            bool Chek = false;
+            int TimeDelete = 30;
+            using (MySqlBase)
             {
-                MySqlBase.Open();
-                string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{message.Chat.Id}';";
-                MySqlCommand command = new(cmdsql, MySqlBase);
-                MySqlDataReader reader = command.ExecuteReader();
-                while (reader.Read())
+                try
                 {
-                    TimeDelete = Convert.ToInt32(reader.GetString(TypeTime));
-                    Chek = Convert.ToBoolean(reader.GetString(TypeView));
+                    MySqlBase.Open();
+                    string cmdsql = $"SELECT * FROM BDGroup WHERE id = '{message.Chat.Id}';";
+                    MySqlCommand command = new(cmdsql, MySqlBase);
+                    MySqlDataReader reader = command.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        TimeDelete = Convert.ToInt32(reader.GetString(TypeTime));
+                        Chek = Convert.ToBoolean(reader.GetString(TypeView));
+                    }
                 }
+                catch { }
             }
-            catch { }
+            if (Chek)
+            {
+                await Task.Delay(TimeDelete * 1000);
+                await botClient.DeleteMessageAsync(InfoDeleteMassage.Chat.Id, InfoDeleteMassage.MessageId);
+            }
         }
-        if (Chek)
-        {
-            await Task.Delay(TimeDelete * 1000);
-            await botClient.DeleteMessageAsync(InfoDeleteMassage.Chat.Id, InfoDeleteMassage.MessageId);
-        }
+        catch { }
     }
-    catch { }
     return;
 }
 
